@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   FUENTE CHUNKY
+========================= */
+@font-face {
+  font-family: 'ChunkyPlayful';
+  src: url('./assets/fonts/ChunkyPlayful.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* =========================
+   BASE
+========================= */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+}
+
+/* =========================
+   COLORES (PALETA CLIENTA)
+========================= */
+@layer base {
+  :root {
+    --background: 24 33% 95%;
+    --foreground: 20 43% 12%;
+
+    --card: 24 45% 97%;
+    --card-foreground: 20 43% 12%;
+
+    --popover: 24 45% 97%;
+    --popover-foreground: 20 43% 12%;
+
+    /* café oscuro */
+    --primary: 20 37% 23%;
+    --primary-foreground: 24 45% 97%;
+
+    /* café medio */
+    --secondary: 10 22% 36%;
+    --secondary-foreground: 24 45% 97%;
+
+    --muted: 24 35% 90%;
+    --muted-foreground: 15 20% 35%;
+
+    --accent: 20 35% 75%;
+    --accent-foreground: 20 43% 12%;
+
+    --border: 22 28% 80%;
+    --input: 22 28% 80%;
+    --ring: 20 37% 23%;
+
+    --radius: 0.75rem;
+  }
+}
+
+/* =========================
+   COMPONENTES
+========================= */
+@layer components {
+  .heading-serif {
+    font-family: 'Playfair Display', serif;
+  }
+
+  /* TITULOS CHONKY RESPONSIVE */
+  .heading-chunky {
+    font-family: 'ChunkyPlayful', cursive;
+    letter-spacing: -0.3px;
+    -webkit-text-stroke: 0.3px rgba(79, 49, 36, 0.25);
+  }
+
+  @media (min-width: 768px) {
+    .heading-chunky {
+      letter-spacing: -1px;
+      -webkit-text-stroke: 1px rgba(79, 49, 36, 0.45);
+    }
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+html {
+  scroll-behavior: smooth;
+}

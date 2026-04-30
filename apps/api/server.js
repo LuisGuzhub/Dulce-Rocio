@@ -1,0 +1,642 @@
+const express = require("express");
+const cors = require("cors");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
+const passport = require("passport");
+const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const db = require("./database");
+require("dotenv").config();
+const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+    },
+});
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use(passport.initialize());
+
+// =========================
+// CONFIGURACIÓN GOOGLE
+// =========================
+
+passport.use(
+    new GoogleStrategy(
+        {
+            clientID: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            callbackURL: process.env.GOOGLE_CALLBACK_URL,
+        },
+        async (accessToken, refreshToken, profile, done) => {
+            const googleId = profile.id;
+            const name = profile.displayName;
+            const email = profile.emails?.[0]?.value;
+            const photo = profile.photos?.[0]?.value;
+
+            if (!email) {
+                return done(null, false);
+            }
+
+            db.get("SELECT * FROM users WHERE email = ?", [email], (err, user) => {
+                if (err) {
+                    return done(err, null);
+                }
+
+                if (user) {
+                    return done(null, user);
+                }
+
+                db.run(
+                    `
+                    INSERT INTO users 
+                    (name, email, provider, provider_id, role, photo_url)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    `,
+                    [name, email, "google", googleId, "cliente", photo],
+                    function (err) {
+                        if (err) {
+                            return done(err, null);
+                        }
+
+                        db.get(
+                            "SELECT * FROM users WHERE id = ?",
+                            [this.lastID],
+                            (err, newUser) => {
+                                if (err) {
+                                    return done(err, null);
+                                }
+
+                                return done(null, newUser);
+                            }
+                        );
+                    }
+                );
+            });
+        }
+    )
+);
+
+// =========================
+// ADMIN TEMPORAL
+// =========================
+
+const adminUser = {
+    email: "admin@dulcerocio.com",
+    passwordHash: "",
+};
+
+async function init() {
+    adminUser.passwordHash = await bcrypt.hash("Admin12345", 10);
+}
+
+init();
+
+// =========================
+// LOGIN ADMIN
+// =========================
+
+app.post("/api/admin/login", async (req, res) => {
+    const { email, password } = req.body;
+
+    if (email !== adminUser.email) {
+        return res.status(401).json({ message: "Credenciales incorrectas" });
+    }
+
+    const validPassword = await bcrypt.compare(password, adminUser.passwordHash);
+
+    if (!validPassword) {
+        return res.status(401).json({ message: "Credenciales incorrectas" });
+    }
+
+    const token = jwt.sign(
+        { email: adminUser.email, role: "admin" },
+        process.env.JWT_SECRET,
+        { expiresIn: "2h" }
+    );
+
+    res.json({
+        message: "Login correcto",
+        token,
+    });
+});
+
+// =========================
+// REGISTRO CLIENTE LOCAL
+// =========================
+
+app.post("/api/auth/register", async (req, res) => {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+        return res.status(400).json({ message: "Faltan datos" });
+    }
+
+    db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
+        if (err) {
+            return res.status(500).json({ message: "Error consultando usuario" });
+        }
+
+        if (user) {
+            return res.status(400).json({ message: "El usuario ya existe" });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        db.run(
+            `
+            INSERT INTO users 
+            (name, email, password_hash, provider, role)
+            VALUES (?, ?, ?, ?, ?)
+            `,
+            [name, email, passwordHash, "local", "cliente"],
+            function (err) {
+                if (err) {
+                    return res.status(500).json({ message: "Error al registrar usuario" });
+                }
+
+                res.json({
+                    message: "Usuario registrado correctamente",
+                    userId: this.lastID,
+                });
+            }
+        );
+    });
+});
+
+// =========================
+// LOGIN CLIENTE LOCAL
+// =========================
+
+app.post("/api/auth/login", async (req, res) => {
+    const { email, password } = req.body;
+
+    // ADMIN TEMPORAL
+    if (email === adminUser.email) {
+        const validPassword = await bcrypt.compare(password, adminUser.passwordHash);
+
+        if (!validPassword) {
+            return res.status(401).json({ message: "Contraseña incorrecta" });
+        }
+
+        const adminData = {
+            id: 0,
+            name: "Administrador",
+            email: adminUser.email,
+            role: "admin",
+            provider: "local",
+        };
+
+        const token = jwt.sign(
+            adminData,
+            process.env.JWT_SECRET,
+            { expiresIn: "2h" }
+        );
+
+        return res.json({
+            message: "Login admin correcto",
+            token,
+            user: adminData,
+        });
+    }
+
+    // CLIENTE NORMAL
+    db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
+        if (err) {
+            return res.status(500).json({ message: "Error del servidor" });
+        }
+
+        if (!user) {
+            return res.status(401).json({ message: "Usuario no encontrado" });
+        }
+
+        if (!user.password_hash) {
+            return res.status(401).json({
+                message: "Este usuario inició sesión con Google. Usa Google para entrar.",
+            });
+        }
+
+        const validPassword = await bcrypt.compare(password, user.password_hash);
+
+        if (!validPassword) {
+            return res.status(401).json({ message: "Contraseña incorrecta" });
+        }
+
+        const userData = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            provider: user.provider,
+            photo_url: user.photo_url,
+        };
+
+        const token = jwt.sign(
+            userData,
+            process.env.JWT_SECRET,
+            { expiresIn: "2h" }
+        );
+
+        res.json({
+            message: "Login cliente correcto",
+            token,
+            user: userData,
+        });
+    });
+});
+
+// =========================
+// LOGIN CON GOOGLE
+// =========================
+
+// =========================
+// RECUPERAR CONTRASEÑA
+// =========================
+
+app.post("/api/auth/forgot-password", (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ message: "El correo es obligatorio" });
+    }
+
+    db.get("SELECT * FROM users WHERE email = ?", [email], async (err, user) => {
+        if (err) {
+            return res.status(500).json({ message: "Error del servidor" });
+        }
+
+        if (!user) {
+            return res.json({
+                message: "Si el correo existe, enviaremos un enlace de recuperación.",
+            });
+        }
+
+        if (user.provider === "google") {
+            return res.status(400).json({
+                message: "Esta cuenta usa Google. Inicia sesión con Google.",
+            });
+        }
+
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        const expires = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+        db.run(
+            `
+            UPDATE users 
+            SET reset_token = ?, reset_token_expires = ?
+            WHERE email = ?
+            `,
+            [resetToken, expires, email],
+            async (err) => {
+                if (err) {
+                    return res.status(500).json({ message: "Error generando enlace" });
+                }
+
+                const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+
+                try {
+                    await transporter.sendMail({
+                        from: `"Dulce Rocío" <${process.env.EMAIL_USER}>`,
+                        to: email,
+                        subject: "Recupera tu contraseña - Dulce Rocío",
+                        html: `
+                            <div style="font-family: Arial, sans-serif; padding: 20px;">
+                                <h2>Recuperación de contraseña</h2>
+                                <p>Hola ${user.name},</p>
+                                <p>Recibimos una solicitud para cambiar tu contraseña.</p>
+                                <p>Haz clic en el siguiente botón:</p>
+                                <a href="${resetLink}" 
+                                   style="display:inline-block;background:#d78963;color:white;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:bold;">
+                                   Cambiar contraseña
+                                </a>
+                                <p>Este enlace expira en 15 minutos.</p>
+                                <p>Si tú no solicitaste esto, puedes ignorar este correo.</p>
+                            </div>
+                        `,
+                    });
+
+                    res.json({
+                        message: "Si el correo existe, enviaremos un enlace de recuperación.",
+                    });
+                } catch (error) {
+                    console.error(error);
+                    res.status(500).json({ message: "No se pudo enviar el correo" });
+                }
+            }
+        );
+    });
+});
+app.post("/api/auth/reset-password", async (req, res) => {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+        return res.status(400).json({ message: "Faltan datos" });
+    }
+
+    if (password.length < 6) {
+        return res.status(400).json({
+            message: "La contraseña debe tener al menos 6 caracteres",
+        });
+    }
+
+    db.get(
+        "SELECT * FROM users WHERE reset_token = ?",
+        [token],
+        async (err, user) => {
+            if (err) {
+                return res.status(500).json({ message: "Error del servidor" });
+            }
+
+            if (!user) {
+                return res.status(400).json({ message: "Enlace inválido" });
+            }
+
+            const now = new Date();
+            const expires = new Date(user.reset_token_expires);
+
+            if (now > expires) {
+                return res.status(400).json({ message: "El enlace expiró" });
+            }
+
+            const passwordHash = await bcrypt.hash(password, 10);
+
+            db.run(
+                `
+                UPDATE users
+                SET password_hash = ?, reset_token = NULL, reset_token_expires = NULL
+                WHERE id = ?
+                `,
+                [passwordHash, user.id],
+                (err) => {
+                    if (err) {
+                        return res.status(500).json({ message: "Error actualizando contraseña" });
+                    }
+
+                    res.json({
+                        message: "Contraseña actualizada correctamente",
+                    });
+                }
+            );
+        }
+    );
+});
+app.get(
+    "/api/auth/google",
+    passport.authenticate("google", {
+        scope: ["profile", "email"],
+    })
+);
+
+app.get(
+    "/api/auth/google/callback",
+    passport.authenticate("google", {
+        session: false,
+        failureRedirect: "http://localhost:3000/login",
+    }),
+    (req, res) => {
+        const token = jwt.sign(
+            { id: req.user.id, email: req.user.email, role: req.user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "2h" }
+        );
+
+        res.redirect(`${process.env.FRONTEND_URL}/auth/success?token=${token}`);
+    }
+);
+
+// =========================
+// MIDDLEWARE TOKEN
+// =========================
+
+function verificarToken(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+        return res.status(401).json({ message: "Token no enviado" });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        return res.status(401).json({ message: "Token inválido o expirado" });
+    }
+}
+
+app.get("/api/auth/profile", verificarToken, (req, res) => {
+    res.json({
+        message: "Perfil obtenido correctamente",
+        user: req.user,
+    });
+});
+// =========================
+// RUTAS PROTEGIDAS
+// =========================
+
+app.get("/api/admin/profile", verificarToken, (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    res.json({
+        message: "Acceso autorizado",
+        user: req.user,
+    });
+});
+
+app.get("/api/admin/orders", verificarToken, (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    db.all(
+        "SELECT * FROM orders ORDER BY created_at DESC",
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ message: "Error obteniendo pedidos" });
+            }
+
+            res.json({
+                orders: rows,
+            });
+        }
+    );
+});
+app.post("/api/orders/create", (req, res) => {
+    const {
+        name,
+        email,
+        phone,
+        product,
+        date,
+        message
+    } = req.body;
+
+    if (!name || !email || !phone || !product || !date) {
+        return res.status(400).json({
+            message: "Faltan datos obligatorios del pedido"
+        });
+    }
+
+    db.run(
+        `
+        INSERT INTO orders 
+        (customer_name, customer_email, product_name, quantity, total, status)
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+            name,
+            email,
+            `${product} | Tel: ${phone} | Fecha: ${date} | Mensaje: ${message || "Sin mensaje"}`,
+            1,
+            0,
+            "pendiente"
+        ],
+        function (err) {
+            if (err) {
+                console.error("Error guardando solicitud:", err.message);
+
+                return res.status(500).json({
+                    message: "Error al guardar la solicitud"
+                });
+            }
+
+            res.json({
+                message: "Solicitud enviada correctamente",
+                orderId: this.lastID
+            });
+        }
+    );
+});
+app.post("/api/orders", (req, res) => {
+    const {
+        customer_name,
+        customer_email,
+        product_name,
+        quantity,
+        total
+    } = req.body;
+
+    if (!customer_name || !customer_email || !product_name || !quantity || !total) {
+        return res.status(400).json({ message: "Faltan datos del pedido" });
+    }
+
+    db.run(
+        `
+        INSERT INTO orders 
+        (customer_name, customer_email, product_name, quantity, total)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [customer_name, customer_email, product_name, quantity, total],
+        function (err) {
+            if (err) {
+                return res.status(500).json({ message: "Error al guardar pedido" });
+            }
+
+            res.json({
+                message: "Pedido guardado correctamente",
+                orderId: this.lastID,
+            });
+        }
+    );
+});
+// =========================
+// SERVIDOR
+// =========================
+app.get("/api/admin/users", verificarToken, (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    db.all(
+        "SELECT id, name, email, role, provider, created_at FROM users ORDER BY created_at DESC",
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({ message: "Error obteniendo usuarios" });
+            }
+
+            res.json({
+                users: rows,
+            });
+        }
+    );
+});
+app.post("/api/reviews", verificarToken, (req, res) => {
+    const { rating, comment } = req.body;
+
+    if (!rating || !comment) {
+        return res.status(400).json({
+            message: "La calificación y el comentario son obligatorios",
+        });
+    }
+
+    if (rating < 1 || rating > 5) {
+        return res.status(400).json({
+            message: "La calificación debe estar entre 1 y 5",
+        });
+    }
+
+    db.run(
+        `
+        INSERT INTO reviews 
+        (user_id, customer_name, customer_email, rating, comment)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+            req.user.id,
+            req.user.name,
+            req.user.email,
+            rating,
+            comment,
+        ],
+        function (err) {
+            if (err) {
+                console.error("Error guardando reseña:", err.message);
+
+                return res.status(500).json({
+                    message: "Error al guardar la reseña",
+                });
+            }
+
+            res.json({
+                message: "Reseña enviada correctamente",
+                reviewId: this.lastID,
+            });
+        }
+    );
+});
+
+app.get("/api/admin/reviews", verificarToken, (req, res) => {
+    if (req.user.role !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" });
+    }
+
+    db.all(
+        "SELECT * FROM reviews ORDER BY created_at DESC",
+        [],
+        (err, rows) => {
+            if (err) {
+                return res.status(500).json({
+                    message: "Error obteniendo reseñas",
+                });
+            }
+
+            res.json({
+                reviews: rows,
+            });
+        }
+    );
+});
+app.listen(4000, () => {
+    console.log("Servidor corriendo en http://localhost:4000");
+});
