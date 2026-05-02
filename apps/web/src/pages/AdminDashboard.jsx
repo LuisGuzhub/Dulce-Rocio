@@ -19,7 +19,7 @@ export default function AdminDashboard() {
             }
 
             try {
-                const resProfile = await fetch("http://localhost:4000/api/auth/profile", {
+                const resProfile = await fetch("https://dulce-rocio.onrender.com/api/auth/profile", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -41,7 +41,7 @@ export default function AdminDashboard() {
 
                 setUser(profileData.user);
 
-                const resOrders = await fetch("http://localhost:4000/api/admin/orders", {
+                const resOrders = await fetch("https://dulce-rocio.onrender.com/api/admin/orders", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -52,7 +52,7 @@ export default function AdminDashboard() {
                     setOrders(ordersData.orders || []);
                 }
 
-                const resUsers = await fetch("http://localhost:4000/api/admin/users", {
+                const resUsers = await fetch("https://dulce-rocio.onrender.com/api/admin/users", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
                     const usersData = await resUsers.json();
                     setUsers(usersData.users || []);
                 }
-                const resReviews = await fetch("http://localhost:4000/api/admin/reviews", {
+                const resReviews = await fetch("https://dulce-rocio.onrender.com/api/admin/reviews", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },

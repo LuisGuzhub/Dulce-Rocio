@@ -9,7 +9,7 @@ export default function ClientLogin() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:4000/api/auth/login", {
+      const res = await fetch("https://dulce-rocio.onrender.com/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -86,7 +86,7 @@ export default function ClientLogin() {
         <button
           type="button"
           onClick={() => {
-            window.location.href = "http://localhost:4000/api/auth/google";
+            window.location.href = "https://dulce-rocio.onrender.com/api/auth/google";
           }}
           className="w-full mt-4 border py-3 rounded-xl"
         >

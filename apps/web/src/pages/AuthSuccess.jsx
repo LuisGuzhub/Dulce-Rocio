@@ -17,7 +17,7 @@ export default function AuthSuccess() {
       localStorage.setItem("token", token);
 
       try {
-        const res = await fetch("http://localhost:4000/api/auth/profile", {
+        const res = await fetch("https://dulce-rocio.onrender.com/api/auth/profile", {
           headers: {
             Authorization: `Bearer ${token}`,
           },

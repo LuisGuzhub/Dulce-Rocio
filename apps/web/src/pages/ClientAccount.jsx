@@ -16,7 +16,7 @@ export default function ClientAccount() {
                 return;
             }
 
-            const res = await fetch("http://localhost:4000/api/auth/profile", {
+            const res = await fetch("https://dulce-rocio.onrender.com/api/auth/profile", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -52,7 +52,7 @@ export default function ClientAccount() {
         setSendingReview(true);
 
         try {
-            const res = await fetch("http://localhost:4000/api/reviews", {
+            const res = await fetch("https://dulce-rocio.onrender.com/api/reviews", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -8,7 +8,7 @@ export default function ClientRegister() {
   const registrarCliente = async (e) => {
     e.preventDefault();
 
-    const res = await fetch("http://localhost:4000/api/auth/register", {
+    const res = await fetch("https://dulce-rocio.onrender.com/api/auth/register", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

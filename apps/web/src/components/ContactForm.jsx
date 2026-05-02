@@ -56,7 +56,7 @@ function ContactForm() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("http://localhost:4000/api/orders/create", {
+      const res = await fetch("https://dulce-rocio.onrender.com/api/orders/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
