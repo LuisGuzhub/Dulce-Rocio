@@ -639,6 +639,10 @@ app.get("/api/admin/reviews", verificarToken, (req, res) => {
 });
 const PORT = process.env.PORT || 4000;
 
+app.get("/", (req, res) => {
+  res.send("Servidor Dulce Rocío funcionando 🍰");
+});
+
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
 });
