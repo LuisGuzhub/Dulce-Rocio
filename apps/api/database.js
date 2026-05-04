@@ -1,13 +1,23 @@
-const sqlite3 = require("sqlite3").verbose();
+import pkg from 'pg';
+const { Pool } = pkg;
 
-const db = new sqlite3.Database("./dulce_rocio.db", (err) => {
-    if (err) {
-        console.error("Error conectando a SQLite:", err.message);
-        return;
-    }
-
-    console.log("Base de datos SQLite conectada");
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false,
+    },
 });
+
+// Probar conexión
+pool.query('SELECT NOW()', (err, res) => {
+    if (err) {
+        console.error('❌ Error conectando a PostgreSQL:', err);
+    } else {
+        console.log('✅ PostgreSQL conectado:', res.rows);
+    }
+});
+
+export default pool;
 
 db.serialize(() => {
     db.run(`
