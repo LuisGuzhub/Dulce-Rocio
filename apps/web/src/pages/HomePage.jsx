@@ -15,6 +15,15 @@ import brownieInicio from '@/assets/brownies/brownie_pedido.png';
 
 function HomePage() {
 
+  const token = localStorage.getItem("token");
+
+  const requireAuth = (e, path) => {
+    if (!token) {
+      e.preventDefault();
+      window.location.href = "/login";
+    }
+  };
+
   const featuredProducts = [
     {
       name: 'Tiramisús',
@@ -103,7 +112,10 @@ function HomePage() {
                 >
                   Transformamos tus momentos especiales en experiencias dulces inolvidables con diseños únicos y sabores excepcionales
                 </p>
-                <Link to="/contact">
+                <Link
+                  to="/contact"
+                  onClick={(e) => requireAuth(e, "/contact")}
+                >
                   <Button
                     size="lg"
                     className="text-lg px-8 py-6 bg-[#6F4E47] hover:bg-[#4F3124] text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-[0.98]">
@@ -232,7 +244,10 @@ function HomePage() {
                           {product.description}
                         </p>
 
-                        <Link to="/contact">
+                        <Link
+                          to="/order"
+                          onClick={(e) => requireAuth(e, "/order")}
+                        >
                           <Button
                             className="rounded-full bg-[#6F4E47] hover:bg-[#4F3124] text-white px-6 py-6 text-base shadow-md hover:shadow-lg transition-all duration-300">
                             Quiero este
@@ -297,7 +312,10 @@ function HomePage() {
                   Escríbenos y prepara tu pedido de tiramisús, pavés o brownies con el estilo dulce de Dulce Rocío.
                 </p>
 
-                <Link to="/contact">
+                <Link
+                  to="/contact"
+                  onClick={(e) => requireAuth(e, "/contact")}
+                >
                   <Button
                     size="lg"
                     className="rounded-full bg-[#6F4E47] hover:bg-[#4F3124] text-white px-6 py-6 text-base shadow-md hover:shadow-lg transition-all duration-300">

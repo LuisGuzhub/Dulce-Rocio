@@ -10,7 +10,13 @@ import {
     ShoppingCart,
     Plus,
     Minus,
-    Trash2
+    Trash2,
+    CreditCard,
+    Building2,
+    ExternalLink,
+    X,
+    MapPin,
+    Truck
 } from 'lucide-react';
 
 import Header from '@/components/Header';
@@ -23,6 +29,48 @@ import paveOreo from '@/assets/pave_oreo/oreo_pedido.jpeg';
 import tiramisuNutella from '@/assets/tiramisu_nutella/nuutella_pedido.jpeg';
 import brownies from '@/assets/brownies/brownie_pedido.png';
 import paveNutella from '@/assets/pave_nutella/pave_nute_pedido.jpeg';
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
+
+function LocationMarker({
+    selectedPosition,
+    setSelectedPosition,
+    setDeliveryAddress
+}) {
+    useMapEvents({
+        async click(event) {
+            const lat = event.latlng.lat;
+            const lng = event.latlng.lng;
+
+            setSelectedPosition([lat, lng]);
+
+            try {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+                );
+
+                const data = await response.json();
+
+                if (data?.display_name) {
+                    setDeliveryAddress(data.display_name);
+                }
+            } catch (error) {
+                console.error("Error obteniendo dirección:", error);
+            }
+        },
+    });
+
+    return <Marker position={selectedPosition} />;
+}
 
 function OrderPage() {
     const scrollRef = useRef(null);
@@ -31,6 +79,16 @@ function OrderPage() {
     const [customerName, setCustomerName] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
     const [loggedUser, setLoggedUser] = useState(null);
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [deliveryFee, setDeliveryFee] = useState('');
+    const [selectedSector, setSelectedSector] = useState('');
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [selectedPosition, setSelectedPosition] = useState([
+        -2.170998,
+        -79.922359
+    ]);
+
+    const payphonePaymentLink = "https://ppls.me/BIKDskIgJy8yEfY3c4Q9IQ";
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
 
@@ -42,6 +100,43 @@ function OrderPage() {
             setCustomerEmail(userData.email || "");
         }
     }, []);
+    const deliveryZones = [
+        { name: "Centro", fee: 2.00 },
+        { name: "Bahía", fee: 2.00 },
+        { name: "9 de Octubre", fee: 2.00 },
+        { name: "Garay", fee: 2.25 },
+        { name: "Suburbio", fee: 2.50 },
+        { name: "Febres Cordero", fee: 2.50 },
+        { name: "Letamendi", fee: 2.50 },
+        { name: "García Moreno", fee: 2.50 },
+
+        { name: "Sur", fee: 2.50 },
+        { name: "Guasmo", fee: 3.00 },
+        { name: "Floresta", fee: 3.00 },
+        { name: "Pradera", fee: 3.00 },
+        { name: "Los Esteros", fee: 3.25 },
+        { name: "Trinitaria", fee: 3.50 },
+        { name: "Fertisa", fee: 3.50 },
+
+        { name: "Urdesa", fee: 3.00 },
+        { name: "Kennedy", fee: 3.00 },
+        { name: "Garzota", fee: 3.00 },
+        { name: "Alborada", fee: 3.00 },
+        { name: "Sauces", fee: 3.00 },
+        { name: "Samanes", fee: 3.50 },
+        { name: "Mucho Lote", fee: 3.75 },
+        { name: "Mapasingue", fee: 3.50 },
+        { name: "Bastión Popular", fee: 4.00 },
+        { name: "Pascuales", fee: 4.50 },
+
+        { name: "Ceibos", fee: 4.00 },
+        { name: "Vía a la Costa", fee: 5.00 },
+        { name: "Puerto Azul", fee: 5.00 },
+        { name: "Samborondón", fee: 5.00 },
+        { name: "La Aurora", fee: 5.50 },
+        { name: "Daule", fee: 6.00 },
+        { name: "Durán", fee: 5.00 }
+    ];
 
     const products = [
         {
@@ -114,6 +209,19 @@ function OrderPage() {
 
     const formatPrice = (value) => {
         return Number(value).toFixed(2);
+    };
+    const openPaymentModal = () => {
+        if (cart.length === 0) {
+            alert('Agrega al menos un postre al carrito.');
+            return;
+        }
+
+        if (!customerName || !customerEmail) {
+            alert('Tu nombre y correo son necesarios para continuar con el pago.');
+            return;
+        }
+
+        setShowPaymentModal(true);
     };
 
     const addToCart = (product) => {
@@ -188,6 +296,10 @@ function OrderPage() {
             return accumulator + item.price * item.quantity;
         }, 0);
     }, [cart]);
+    const finalTotal = useMemo(() => {
+        const deliveryValue = Number(deliveryFee) || 0;
+        return totalPrice + deliveryValue;
+    }, [totalPrice, deliveryFee]);
 
     const whatsappCartMessage = useMemo(() => {
         if (cart.length === 0) {
@@ -204,10 +316,13 @@ function OrderPage() {
         message += `\nNombre: ${customerName || 'No especificado'}`;
         message += `\nCorreo: ${customerEmail || 'No especificado'}`;
         message += `\nTotal de productos: ${totalItems}`;
-        message += `\nTotal a pagar: $${formatPrice(totalPrice)} 💕`;
+        message += `\nDirección de entrega: ${deliveryAddress || 'No especificada'}`;
+        message += `\nSector: ${selectedSector || 'No especificado'}`;
+        message += `\nCosto de delivery: $${formatPrice(deliveryFee || 0)}`;
+        message += `\nTotal final a pagar: $${formatPrice(finalTotal)} 💕`;
 
         return message;
-    }, [cart, totalItems, totalPrice, customerName, customerEmail]);
+    }, [cart, totalItems, totalPrice, finalTotal, customerName, customerEmail, deliveryAddress, selectedSector, deliveryFee]);
 
     const guardarPedido = async () => {
         if (cart.length === 0) {
@@ -230,9 +345,21 @@ function OrderPage() {
                     body: JSON.stringify({
                         customer_name: customerName,
                         customer_email: customerEmail,
+
                         product_name: item.name,
                         quantity: item.quantity,
-                        total: item.price * item.quantity
+
+                        subtotal: totalPrice,
+                        delivery_fee: deliveryFee,
+                        total: finalTotal,
+
+                        delivery_address: deliveryAddress,
+                        sector: selectedSector,
+
+                        latitude: selectedPosition[0],
+                        longitude: selectedPosition[1],
+
+                        payment_method: "pendiente"
                     })
                 });
 
@@ -530,14 +657,89 @@ function OrderPage() {
                                     />
                                 </div>
 
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="relative">
+                                        <MapPin
+                                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
+                                            size={20}
+                                        />
+
+                                        <input
+                                            type="text"
+                                            placeholder="Dirección de entrega"
+                                            value={deliveryAddress}
+                                            onChange={(event) => setDeliveryAddress(event.target.value)}
+                                            className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white"
+                                        />
+                                    </div>
+
+                                    <div className="relative">
+                                        <Truck
+                                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
+                                            size={20}
+                                        />
+
+                                        <select
+                                            value={selectedSector}
+                                            onChange={(event) => {
+                                                const sectorName = event.target.value;
+                                                const zone = deliveryZones.find((item) => item.name === sectorName);
+
+                                                setSelectedSector(sectorName);
+                                                setDeliveryFee(zone ? zone.fee : '');
+                                            }}
+                                            className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white text-[#3d2a22]"
+                                        >
+                                            <option value="">Selecciona tu sector</option>
+
+                                            {deliveryZones.map((zone) => (
+                                                <option key={zone.name} value={zone.name}>
+                                                    {zone.name} - ${formatPrice(zone.fee)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="mt-5 overflow-hidden rounded-3xl border border-[#eadfd7]">
+                                    <MapContainer
+                                        center={selectedPosition}
+                                        zoom={13}
+                                        style={{
+                                            height: "320px",
+                                            width: "100%"
+                                        }}
+                                    >
+                                        <TileLayer
+                                            attribution='&copy; OpenStreetMap contributors'
+                                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                        />
+
+                                        <LocationMarker
+                                            selectedPosition={selectedPosition}
+                                            setSelectedPosition={setSelectedPosition}
+                                            setDeliveryAddress={setDeliveryAddress}
+                                        />
+                                    </MapContainer>
+                                </div>
+
                                 <div className="mt-6 pt-6 border-t border-[#eadfd7] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                                     <div>
                                         <p className="text-lg text-[#3d2a22] font-medium">
                                             Total de productos: <span className="font-bold">{totalItems}</span>
                                         </p>
-                                        <p className="text-2xl font-bold text-[#6F4E47] mt-1">
-                                            Total a pagar: ${formatPrice(totalPrice)}
-                                        </p>
+                                        <div className="mt-2 space-y-1">
+                                            <p className="text-lg text-[#6F4E47]">
+                                                Subtotal productos: ${formatPrice(totalPrice)}
+                                            </p>
+
+                                            <p className="text-lg text-[#6F4E47]">
+                                                Delivery: ${formatPrice(deliveryFee || 0)}
+                                            </p>
+
+                                            <p className="text-3xl font-bold text-[#2d1d17]">
+                                                Total final: ${formatPrice(finalTotal)}
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row gap-3">
@@ -548,6 +750,15 @@ function OrderPage() {
                                         >
                                             <ShoppingCart size={22} />
                                             Guardar pedido
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={openPaymentModal}
+                                            className="inline-flex items-center justify-center gap-3 bg-[#2d1d17] hover:bg-[#4F3124] text-white font-semibold px-8 py-4 rounded-2xl text-lg transition-all duration-300 shadow-md hover:shadow-lg"
+                                        >
+                                            <CreditCard size={22} />
+                                            Pagar
                                         </button>
 
                                         <a
@@ -626,7 +837,107 @@ function OrderPage() {
                     </div>
                 </section>
             </main>
+            {showPaymentModal && (
+                <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center px-4">
+                    <div className="relative bg-[#fffaf7] w-full max-w-3xl rounded-[28px] shadow-2xl border border-[#eadfd7] p-6 md:p-8">
+                        <button
+                            type="button"
+                            onClick={() => setShowPaymentModal(false)}
+                            className="absolute top-5 right-5 text-[#6F4E47] hover:text-[#2d1d17]"
+                        >
+                            <X size={26} />
+                        </button>
 
+                        <h2
+                            className="text-3xl md:text-4xl font-bold text-[#2d1d17] mb-2"
+                            style={{ fontFamily: 'Playfair Display, serif' }}
+                        >
+                            Elige tu método de pago
+                        </h2>
+
+                        <p className="text-[#6F4E47] mb-6">
+                            Total final a pagar: <span className="font-bold">${formatPrice(finalTotal)}</span>
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            <div className="bg-white rounded-3xl border border-[#eadfd7] p-5">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <Building2 className="text-[#6F4E47]" size={28} />
+                                    <h3 className="text-xl font-bold text-[#2d1d17]">
+                                        Transferencia bancaria
+                                    </h3>
+                                </div>
+
+                                <div className="space-y-5 text-[#4a352d]">
+
+                                    <div className="bg-[#fcf7f3] border border-[#eadfd7] rounded-2xl p-4">
+                                        <p className="text-lg font-bold text-[#2d1d17] mb-3">
+                                            Banco Pichincha
+                                        </p>
+
+                                        <div className="space-y-2">
+                                            <p><strong>Tipo:</strong> Cuenta ahorros</p>
+                                            <p><strong>Número:</strong> 2207165064</p>
+                                            <p><strong>Titular:</strong> Michelle Campos</p>
+                                            <p><strong>CI:</strong> 0925309775</p>
+                                            <p><strong>Correo:</strong> michellecamposs@gmail.com</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-[#fcf7f3] border border-[#eadfd7] rounded-2xl p-4">
+                                        <p className="text-lg font-bold text-[#2d1d17] mb-3">
+                                            Banco Guayaquil
+                                        </p>
+
+                                        <div className="space-y-2">
+                                            <p><strong>Tipo:</strong> Cuenta ahorros</p>
+                                            <p><strong>Número:</strong> 0030732370</p>
+                                            <p><strong>Titular:</strong> Michelle Campos</p>
+                                            <p><strong>CI:</strong> 0925309775</p>
+                                            <p><strong>Correo:</strong> michellecamposs@gmail.com</p>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <a
+                                    href={generateWhatsAppLink(`${whatsappCartMessage}\n\nYa realicé la transferencia. Adjunto mi comprobante.`)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-5 inline-flex w-full items-center justify-center gap-3 bg-[#6F4E47] hover:bg-[#4F3124] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                                >
+                                    <MessageCircle size={20} />
+                                    Enviar comprobante
+                                </a>
+                            </div>
+
+                            <div className="bg-white rounded-3xl border border-[#eadfd7] p-5">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <CreditCard className="text-[#6F4E47]" size={28} />
+                                    <h3 className="text-xl font-bold text-[#2d1d17]">
+                                        Tarjeta / PayPhone
+                                    </h3>
+                                </div>
+
+                                <p className="text-[#4a352d] leading-7 mb-5">
+                                    Paga con tarjeta mediante PayPhone. Al abrirse el enlace, ingresa el monto exacto:
+                                    <strong> ${formatPrice(finalTotal)}</strong>.
+                                </p>
+
+                                <a
+                                    href={payphonePaymentLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                                >
+                                    <ExternalLink size={20} />
+                                    Pagar con PayPhone
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             <Footer />
         </>
     );

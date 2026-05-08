@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Route, Routes, BrowserRouter as Router, Navigate } from 'react-router-dom';
 
@@ -9,7 +8,6 @@ import AboutPage from './pages/AboutPage';
 import GalleryPage from './pages/GalleryPage';
 import ContactPage from './pages/ContactPage';
 import OrderPage from '@/pages/OrderPage';
-import AdminLogin from '@/pages/AdminLogin';
 import AdminDashboard from "./pages/AdminDashboard";
 import AuthSuccess from "./pages/AuthSuccess";
 import ClientAccount from "./pages/ClientAccount";
@@ -17,26 +15,96 @@ import ClientLogin from "./pages/ClientLogin";
 import ClientRegister from "./pages/ClientRegister";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+
+const PrivateRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
 function App() {
   return (
     <Router>
       <ScrollToTop />
+
       <Routes>
+
         <Route path="/" element={<HomePage />} />
-        <Route path="/order" element={<OrderPage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/gallery" element={<GalleryPage />} />
-        <Route path="/contact" element={<ContactPage />} />
+
+        <Route
+          path="/about"
+          element={
+            <PrivateRoute>
+              <AboutPage />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/order"
+          element={
+            <PrivateRoute>
+              <OrderPage />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/gallery"
+          element={
+            <PrivateRoute>
+              <GalleryPage />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/contact"
+          element={
+            <PrivateRoute>
+              <ContactPage />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/account"
+          element={
+            <PrivateRoute>
+              <ClientAccount />
+            </PrivateRoute>
+          }
+        />
 
         <Route path="/admin/dashboard" element={<AdminDashboard />} />
+
         <Route path="/auth/success" element={<AuthSuccess />} />
-        <Route path="/account" element={<ClientAccount />} />
+
         <Route path="/login" element={<ClientLogin />} />
-        <Route path="/cuenta" element={<Navigate to="/account" replace />} />
+
+        <Route
+          path="/cuenta"
+          element={<Navigate to="/account" replace />}
+        />
+
         <Route path="/register" element={<ClientRegister />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+        <Route
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        />
+
+        <Route
+          path="/reset-password/:token"
+          element={<ResetPassword />}
+        />
+
       </Routes>
+
       <Toaster />
     </Router>
   );

@@ -86,7 +86,10 @@ function HomePage() {
                 >
                   Transformamos tus momentos especiales en experiencias dulces inolvidables con diseños únicos y sabores excepcionales
                 </p>
-                <Link to="/contact">
+                <Link
+                  to="/contact"
+                  onClick={(e) => requireAuth(e, "/contact")}
+                >
                   <Button
                     size="lg"
                     className="text-lg px-8 py-6 bg-[#e89a7a] hover:bg-[#d87f5c] text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-[0.98]"
@@ -125,7 +128,10 @@ function HomePage() {
                 </p>
 
                 <div className="flex flex-col sm:flex-row justify-center gap-4 mb-10">
-                  <Link to="/gallery">
+                  <Link
+                    to="/gallery"
+                    onClick={(e) => requireAuth(e, "/gallery")}
+                  >
                     <Button
                       size="lg"
                       className="w-full sm:w-auto rounded-full bg-[#3a241b] hover:bg-[#533126] text-white px-8 py-6 text-base shadow-lg hover:shadow-xl transition-all duration-300"
@@ -134,7 +140,10 @@ function HomePage() {
                     </Button>
                   </Link>
 
-                  <Link to="/contact">
+                  <Link
+                    to="/contact"
+                    onClick={(e) => requireAuth(e, "/contact")}
+                  >
                     <Button
                       size="lg"
                       variant="outline"
@@ -216,7 +225,10 @@ function HomePage() {
                           {product.description}
                         </p>
 
-                        <Link to="/contact">
+                        <Link
+                          to="/contact"
+                          onClick={(e) => requireAuth(e, "/contact")}
+                        >
                           <Button
                             className="rounded-full bg-[#bb7a57] hover:bg-[#a96846] text-white px-6 py-6 text-base shadow-md hover:shadow-lg transition-all duration-300"
                           >
@@ -282,7 +294,10 @@ function HomePage() {
                   Escríbenos y prepara tu pedido de tiramisús, pavés o brownies con el estilo dulce de Dulce Rocío.
                 </p>
 
-                <Link to="/contact">
+                <Link
+                  to="/contact"
+                  onClick={(e) => requireAuth(e, "/contact")}
+                >
                   <Button
                     size="lg"
                     className="rounded-full bg-[#bb7a57] hover:bg-[#a96846] text-white px-8 py-6 text-base shadow-md hover:shadow-lg transition-all duration-300"
