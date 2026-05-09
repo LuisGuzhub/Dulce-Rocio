@@ -71,6 +71,17 @@ function LocationMarker({
 
     return <Marker position={selectedPosition} />;
 }
+function MapUpdater({ selectedPosition }) {
+    const map = useMapEvents({});
+
+    useEffect(() => {
+        if (selectedPosition) {
+            map.setView(selectedPosition, 17);
+        }
+    }, [selectedPosition, map]);
+
+    return null;
+}
 
 function OrderPage() {
     const scrollRef = useRef(null);
@@ -82,6 +93,7 @@ function OrderPage() {
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [deliveryFee, setDeliveryFee] = useState('');
     const [selectedSector, setSelectedSector] = useState('');
+    const [selectedBranch, setSelectedBranch] = useState("Sur");
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [selectedPosition, setSelectedPosition] = useState([
         -2.170998,
@@ -138,6 +150,24 @@ function OrderPage() {
         { name: "Durán", fee: 5.00 }
     ];
 
+    const branches = [
+        {
+            name: "Urb Plaza Madeira",
+            description: "Sucursal norte / vía a Samborondón",
+            availableProducts: [1, 2, 5]
+        },
+        {
+            name: "Alborada CC Plaza Mayor I",
+            description: "Sucursal norte de Guayaquil",
+            availableProducts: [1, 2, 3, 4]
+        },
+        {
+            name: "Sur",
+            description: "17 & Francisco de Marcos",
+            availableProducts: [1, 3, 5, 6]
+        }
+    ];
+
     const products = [
         {
             id: 1,
@@ -183,6 +213,12 @@ function OrderPage() {
         }
     ];
 
+    const selectedBranchData = branches.find((branch) => branch.name === selectedBranch);
+
+    const availableProducts = products.filter((product) => {
+        return selectedBranchData?.availableProducts.includes(product.id);
+    });
+
     const whatsappNumber = '593986887205';
 
     const scrollLeft = () => {
@@ -209,6 +245,50 @@ function OrderPage() {
 
     const formatPrice = (value) => {
         return Number(value).toFixed(2);
+    };
+    const searchAddress = async () => {
+        if (!deliveryAddress.trim()) {
+            alert("Escribe una dirección para buscarla en el mapa.");
+            return;
+        }
+
+        const cleanAddress = deliveryAddress.trim();
+
+        const searchOptions = [
+            `${cleanAddress}, Guayaquil, Ecuador`,
+            `${cleanAddress.replace(" y ", " & ")}, Guayaquil, Ecuador`,
+            `${cleanAddress.replace(" y ", " esquina ")}, Guayaquil, Ecuador`,
+            `Avenida ${cleanAddress}, Guayaquil, Ecuador`,
+            `${cleanAddress}, 090306, Guayaquil, Ecuador`
+        ];
+
+        try {
+            for (const query of searchOptions) {
+                const response = await fetch(
+                    `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=ec&limit=1`
+                );
+
+                const data = await response.json();
+
+                if (data.length > 0) {
+                    const lat = Number(data[0].lat);
+                    const lng = Number(data[0].lon);
+
+                    setSelectedPosition([lat, lng]);
+
+                    if (data[0].display_name) {
+                        setDeliveryAddress(data[0].display_name);
+                    }
+
+                    return;
+                }
+            }
+
+            alert("No se encontró la dirección exacta. Marca el punto manualmente en el mapa.");
+        } catch (error) {
+            console.error("Error buscando dirección:", error);
+            alert("No se pudo buscar la dirección.");
+        }
     };
     const openPaymentModal = () => {
         if (cart.length === 0) {
@@ -315,6 +395,7 @@ function OrderPage() {
 
         message += `\nNombre: ${customerName || 'No especificado'}`;
         message += `\nCorreo: ${customerEmail || 'No especificado'}`;
+        message += `\nSucursal elegida: ${selectedBranch}`;
         message += `\nTotal de productos: ${totalItems}`;
         message += `\nDirección de entrega: ${deliveryAddress || 'No especificada'}`;
         message += `\nSector: ${selectedSector || 'No especificado'}`;
@@ -436,6 +517,33 @@ function OrderPage() {
                 </section>
 
                 <section id="opciones" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+                    <div className="mb-10 text-center">
+                        <p className="text-[#d78963] font-semibold mb-3">
+                            Elige la sucursal más cercana
+                        </p>
+
+                        <div className="flex flex-wrap justify-center gap-3">
+                            {branches.map((branch) => (
+                                <button
+                                    key={branch.name}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedBranch(branch.name);
+                                        setCart([]);
+                                    }}
+                                    className={`px-5 py-3 rounded-2xl border font-semibold transition-all ${selectedBranch === branch.name
+                                            ? "bg-[#6F4E47] text-white border-[#6F4E47] shadow-md"
+                                            : "bg-white text-[#6F4E47] border-[#eadfd7] hover:bg-[#f7e7dc]"
+                                        }`}
+                                >
+                                    <span className="block">{branch.name}</span>
+                                    <span className="block text-xs font-normal opacity-80">
+                                        {branch.description}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     <div className="text-center mb-10">
                         <h2
                             className="text-4xl sm:text-5xl font-bold text-[#2d1d17]"
@@ -461,7 +569,7 @@ function OrderPage() {
                         </button>
 
                         <div ref={scrollRef} className="flex gap-6 overflow-x-auto scroll-smooth px-2 pb-4">
-                            {products.map((product) => {
+                            {availableProducts.map((product) => {
                                 const cartItem = cart.find((item) => item.id === product.id);
                                 const quantityInCart = cartItem ? cartItem.quantity : 0;
                                 const subtotal = cartItem ? cartItem.quantity * cartItem.price : 0;
@@ -669,6 +777,12 @@ function OrderPage() {
                                             placeholder="Dirección de entrega"
                                             value={deliveryAddress}
                                             onChange={(event) => setDeliveryAddress(event.target.value)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter") {
+                                                    event.preventDefault();
+                                                    searchAddress();
+                                                }
+                                            }}
                                             className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white"
                                         />
                                     </div>
@@ -694,7 +808,7 @@ function OrderPage() {
 
                                             {deliveryZones.map((zone) => (
                                                 <option key={zone.name} value={zone.name}>
-                                                    {zone.name} - ${formatPrice(zone.fee)}
+                                                    {zone.name}
                                                 </option>
                                             ))}
                                         </select>
@@ -713,6 +827,7 @@ function OrderPage() {
                                             attribution='&copy; OpenStreetMap contributors'
                                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                         />
+                                        <MapUpdater selectedPosition={selectedPosition} />
 
                                         <LocationMarker
                                             selectedPosition={selectedPosition}

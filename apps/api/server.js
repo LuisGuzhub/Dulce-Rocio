@@ -52,8 +52,21 @@ async function crearTablas() {
                 customer_email TEXT NOT NULL,
                 product_name TEXT NOT NULL,
                 quantity INTEGER DEFAULT 1,
+
+                subtotal NUMERIC DEFAULT 0,
+                delivery_fee NUMERIC DEFAULT 0,
                 total NUMERIC DEFAULT 0,
+
+                delivery_address TEXT,
+                sector TEXT,
+
+                latitude TEXT,
+                longitude TEXT,
+
+                payment_method TEXT DEFAULT 'pendiente',
+
                 status TEXT DEFAULT 'pendiente',
+
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -610,7 +623,18 @@ app.post("/api/orders", async (req, res) => {
             customer_email,
             product_name,
             quantity,
-            total
+
+            subtotal,
+            delivery_fee,
+            total,
+
+            delivery_address,
+            sector,
+
+            latitude,
+            longitude,
+
+            payment_method
         } = req.body;
 
         if (!customer_name || !customer_email || !product_name || !quantity || !total) {
@@ -619,12 +643,51 @@ app.post("/api/orders", async (req, res) => {
 
         const result = await pool.query(
             `
-            INSERT INTO orders 
-            (customer_name, customer_email, product_name, quantity, total)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO orders (
+                customer_name,
+                customer_email,
+                product_name,
+                quantity,
+
+                subtotal,
+                delivery_fee,
+                total,
+
+                delivery_address,
+                sector,
+
+                latitude,
+                longitude,
+
+                payment_method
+            )
+            VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7,
+                $8, $9,
+                $10, $11,
+                $12
+            )
             RETURNING id
             `,
-            [customer_name, customer_email, product_name, quantity, total]
+            [
+                customer_name,
+                customer_email,
+                product_name,
+                quantity,
+
+                subtotal,
+                delivery_fee,
+                total,
+
+                delivery_address,
+                sector,
+
+                latitude,
+                longitude,
+
+                payment_method
+            ]
         );
 
         res.json({
@@ -636,7 +699,80 @@ app.post("/api/orders", async (req, res) => {
         res.status(500).json({ message: "Error al guardar pedido" });
     }
 });
+// =========================
+// STOCK DE PRODUCTOS
+// =========================
 
+// OBTENER STOCK
+app.get("/api/products-stock", async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT * FROM product_stock
+            ORDER BY branch_name ASC, product_id ASC
+        `);
+
+        res.json({
+            stock: result.rows
+        });
+
+    } catch (error) {
+        console.error("Error obteniendo stock:", error.message);
+
+        res.status(500).json({
+            message: "Error obteniendo stock"
+        });
+    }
+});
+
+// ACTUALIZAR STOCK ADMIN
+app.post("/api/admin/update-stock", verificarToken, async (req, res) => {
+    try {
+
+        if (req.user.role !== "admin") {
+            return res.status(403).json({
+                message: "Acceso denegado"
+            });
+        }
+
+        const {
+            branch_name,
+            product_id,
+            stock_quantity
+        } = req.body;
+
+        const quantity = Number(stock_quantity);
+
+        const in_stock = quantity > 0;
+
+        await pool.query(
+            `
+            UPDATE product_stock
+SET in_stock = $1,
+    stock_quantity = $2
+WHERE branch_name = $3
+AND product_id = $4
+            `,
+            [
+                in_stock,
+                quantity,
+                branch_name,
+                product_id
+            ]
+        );
+
+        res.json({
+            message: "Stock actualizado correctamente"
+        });
+
+    } catch (error) {
+
+        console.error("Error actualizando stock:", error.message);
+
+        res.status(500).json({
+            message: "Error actualizando stock"
+        });
+    }
+});
 // =========================
 // RESEÑAS
 // =========================

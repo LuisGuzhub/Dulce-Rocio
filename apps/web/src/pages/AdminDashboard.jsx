@@ -6,6 +6,8 @@ export default function AdminDashboard() {
     const [orders, setOrders] = useState([]);
     const [users, setUsers] = useState([]);
     const [reviews, setReviews] = useState([]);
+    const [stock, setStock] = useState([]);
+    const [selectedStockBranch, setSelectedStockBranch] = useState("Urb Plaza Madeira");
     const [section, setSection] = useState("dashboard");
     const [loading, setLoading] = useState(true);
 
@@ -73,7 +75,15 @@ export default function AdminDashboard() {
                     setReviews(reviewsData.reviews || []);
                 }
 
+                const resStock = await fetch("https://dulce-rocio.onrender.com/api/products-stock");
+
+                if (resStock.ok) {
+                    const stockData = await resStock.json();
+                    setStock(stockData.stock || []);
+                }
+
                 setLoading(false);
+                
             } catch (error) {
                 console.error(error);
                 localStorage.removeItem("token");
@@ -240,9 +250,11 @@ export default function AdminDashboard() {
                 )}
 
                 {section === "products" && (
-                    <SectionPlaceholder
-                        title="Productos"
-                        text="Aquí luego podrás crear, editar y eliminar postres como tiramisú, pavés y brownies."
+                    <ProductsInventory
+                        stock={stock}
+                        setStock={setStock}
+                        selectedStockBranch={selectedStockBranch}
+                        setSelectedStockBranch={setSelectedStockBranch}
                     />
                 )}
 
@@ -264,9 +276,14 @@ function OrdersTable({ orders, title }) {
                     <tr>
                         <th className="p-4">Cliente</th>
                         <th className="p-4">Producto</th>
-                        <th className="p-4">Cantidad</th>
-                        <th className="p-4">Estado</th>
+                        <th className="p-4">Dirección</th>
+                        <th className="p-4">Sector</th>
+                        <th className="p-4">Pago</th>
+                        <th className="p-4">Subtotal</th>
+                        <th className="p-4">Delivery</th>
                         <th className="p-4">Total</th>
+                        <th className="p-4">Mapa</th>
+                        <th className="p-4">Estado</th>
                     </tr>
                 </thead>
 
@@ -279,17 +296,205 @@ function OrdersTable({ orders, title }) {
                         </tr>
                     ) : (
                         orders.map((order) => (
-                            <tr key={order.id} className="border-t">
-                                <td className="p-4">{order.customer_name}</td>
-                                <td className="p-4">{order.product_name}</td>
-                                <td className="p-4">{order.quantity}</td>
-                                <td className="p-4">{order.status}</td>
-                                <td className="p-4 font-semibold">${order.total}</td>
+                            <tr key={order.id} className="border-t align-top">
+                                <td className="p-4">
+                                    <div className="font-semibold">
+                                        {order.customer_name}
+                                    </div>
+
+                                    <div className="text-sm text-gray-500">
+                                        {order.customer_email}
+                                    </div>
+                                </td>
+
+                                <td className="p-4">
+                                    <div>{order.product_name}</div>
+
+                                    <div className="text-sm text-gray-500">
+                                        Cantidad: {order.quantity}
+                                    </div>
+                                </td>
+
+                                <td className="p-4 max-w-xs">
+                                    {order.delivery_address || "No registrada"}
+                                </td>
+
+                                <td className="p-4">
+                                    {order.sector || "No definido"}
+                                </td>
+
+                                <td className="p-4">
+                                    <span className="bg-[#f7efe9] px-3 py-1 rounded-full text-sm">
+                                        {order.payment_method || "pendiente"}
+                                    </span>
+                                </td>
+
+                                <td className="p-4 font-semibold">
+                                    ${order.subtotal || 0}
+                                </td>
+
+                                <td className="p-4 font-semibold text-[#d78963]">
+                                    ${order.delivery_fee || 0}
+                                </td>
+
+                                <td className="p-4 font-bold text-[#3b241b]">
+                                    ${order.total}
+                                </td>
+
+                                <td className="p-4">
+                                    {
+                                        order.latitude && order.longitude ? (
+                                            <a
+                                                href={`https://www.google.com/maps?q=${order.latitude},${order.longitude}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-600 underline"
+                                            >
+                                                Ver mapa
+                                            </a>
+                                        ) : (
+                                            "Sin ubicación"
+                                        )
+                                    }
+                                </td>
+
+                                <td className="p-4">
+                                    {order.status}
+                                </td>
                             </tr>
                         ))
                     )}
                 </tbody>
             </table>
+        </section>
+    );
+}
+
+function ProductsInventory({
+    stock,
+    setStock,
+    selectedStockBranch,
+    setSelectedStockBranch
+}) {
+    const branches = [
+        "Urb Plaza Madeira",
+        "Alborada CC Plaza Mayor I",
+        "Sur"
+    ];
+
+    const branchStock = stock.filter((item) => {
+        return item.branch_name === selectedStockBranch;
+    });
+
+    const updateQuantity = async (item, newQuantity) => {
+        const token = localStorage.getItem("token");
+        const quantity = Number(newQuantity);
+
+        const response = await fetch("https://dulce-rocio.onrender.com/api/admin/update-stock", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                branch_name: item.branch_name,
+                product_id: item.product_id,
+                stock_quantity: quantity
+            }),
+        });
+
+        if (!response.ok) {
+            alert("No se pudo actualizar el inventario.");
+            return;
+        }
+
+        setStock((currentStock) =>
+            currentStock.map((stockItem) => {
+                if (
+                    stockItem.branch_name === item.branch_name &&
+                    stockItem.product_id === item.product_id
+                ) {
+                    return {
+                        ...stockItem,
+                        stock_quantity: quantity,
+                        in_stock: quantity > 0
+                    };
+                }
+
+                return stockItem;
+            })
+        );
+    };
+
+    return (
+        <section className="bg-white rounded-2xl p-6 shadow-sm">
+            <h3 className="text-xl font-bold mb-2 text-[#3b241b]">
+                Inventario por sucursal
+            </h3>
+
+            <p className="text-gray-600 mb-6">
+                Controla cuántos postres hay disponibles en cada sucursal.
+            </p>
+
+            <div className="flex flex-wrap gap-3 mb-6">
+                {branches.map((branch) => (
+                    <button
+                        key={branch}
+                        type="button"
+                        onClick={() => setSelectedStockBranch(branch)}
+                        className={`px-5 py-3 rounded-xl font-semibold border transition ${selectedStockBranch === branch
+                                ? "bg-[#6F4E47] text-white border-[#6F4E47]"
+                                : "bg-white text-[#6F4E47] border-[#eadfd7]"
+                            }`}
+                    >
+                        {branch}
+                    </button>
+                ))}
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-left min-w-[700px]">
+                    <thead className="bg-[#f7efe9]">
+                        <tr>
+                            <th className="p-4">Producto</th>
+                            <th className="p-4">Cantidad disponible</th>
+                            <th className="p-4">Estado</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {branchStock.map((item) => (
+                            <tr key={`${item.branch_name}-${item.product_id}`} className="border-t">
+                                <td className="p-4 font-semibold">
+                                    {item.product_name}
+                                </td>
+
+                                <td className="p-4">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={item.stock_quantity ?? 0}
+                                        onChange={(event) => updateQuantity(item, event.target.value)}
+                                        className="w-28 border border-[#eadfd7] rounded-xl px-3 py-2 outline-none focus:border-[#6F4E47]"
+                                    />
+                                </td>
+
+                                <td className="p-4">
+                                    {Number(item.stock_quantity) > 0 ? (
+                                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">
+                                            En stock
+                                        </span>
+                                    ) : (
+                                        <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">
+                                            Agotado
+                                        </span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </section>
     );
 }
