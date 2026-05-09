@@ -6,6 +6,7 @@ export default function ClientAccount() {
     const [rating, setRating] = useState(5);
     const [comment, setComment] = useState("");
     const [sendingReview, setSendingReview] = useState(false);
+    const [loyalty, setLoyalty] = useState(null);
 
     useEffect(() => {
         const cargarPerfil = async () => {
@@ -30,6 +31,17 @@ export default function ClientAccount() {
 
             const data = await res.json();
             setUser(data.user);
+
+            const loyaltyRes = await fetch("https://dulce-rocio.onrender.com/api/loyalty/me", {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (loyaltyRes.ok) {
+                const loyaltyData = await loyaltyRes.json();
+                setLoyalty(loyaltyData.loyalty);
+            }
         };
 
         cargarPerfil();
@@ -139,6 +151,50 @@ export default function ClientAccount() {
                             >
                                 Cerrar sesión
                             </button>
+                            <div className="mt-6 rounded-3xl bg-[#fff7f2] border border-[#ead8cc] p-5 text-left">
+                                <h3 className="text-lg font-bold text-[#3b241b] mb-2">
+                                    Tarjeta de fidelidad
+                                </h3>
+
+                                <p className="text-sm text-[#7a5a4c] mb-4">
+                                    Compra 8 postres y recibe 1 postre gratis.
+                                </p>
+
+                                <div className="grid grid-cols-4 gap-2 mb-4">
+                                    {Array.from({ length: 8 }).map((_, index) => {
+                                        const completed = index < Number(loyalty?.purchased_items || 0);
+
+                                        return (
+                                            <div
+                                                key={index}
+                                                className={`h-10 rounded-xl flex items-center justify-center text-sm font-bold ${completed
+                                                        ? "bg-[#d78963] text-white"
+                                                        : "bg-white border border-[#ead8cc] text-[#7a5a4c]"
+                                                    }`}
+                                            >
+                                                {index + 1}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <p className="text-sm text-[#3b241b] font-semibold">
+                                    Progreso: {Number(loyalty?.purchased_items || 0)} / 8 postres
+                                </p>
+
+                                <p className="text-sm text-[#7a5a4c] mt-1">
+                                    Postres gratis disponibles:{" "}
+                                    <span className="font-bold text-[#d78963]">
+                                        {Number(loyalty?.free_items_available || 0)}
+                                    </span>
+                                </p>
+
+                                {Number(loyalty?.free_items_available || 0) > 0 && (
+                                    <p className="mt-3 text-sm bg-green-100 text-green-700 px-3 py-2 rounded-xl font-semibold">
+                                        Tienes un postre gratis disponible. Puedes reclamarlo en tu próximo pedido.
+                                    </p>
+                                )}
+                            </div>
                         </div>
 
                         <div className="bg-white rounded-3xl shadow-md p-8 border border-[#ead8cc]">

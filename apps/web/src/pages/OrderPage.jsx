@@ -130,43 +130,58 @@ function OrderPage() {
 
         loadStock();
     }, []);
-    const deliveryZones = [
-        { name: "Centro", fee: 2.00 },
-        { name: "Bahía", fee: 2.00 },
-        { name: "9 de Octubre", fee: 2.00 },
-        { name: "Garay", fee: 2.25 },
-        { name: "Suburbio", fee: 2.50 },
-        { name: "Febres Cordero", fee: 2.50 },
-        { name: "Letamendi", fee: 2.50 },
-        { name: "García Moreno", fee: 2.50 },
+    const deliveryZonesByBranch = {
+        "Urb Plaza Madeira": [
+            { name: "Plaza Madeira", fee: 2.00 },
+            { name: "La Joya", fee: 2.50 },
+            { name: "Villa Club", fee: 2.75 },
+            { name: "Villa del Rey", fee: 3.00 },
+            { name: "La Aurora", fee: 3.00 },
+            { name: "Samborondón", fee: 4.00 },
+            { name: "Ciudad Celeste", fee: 4.50 },
+            { name: "Entre Ríos", fee: 5.00 },
+            { name: "Daule", fee: 5.50 }
+        ],
 
-        { name: "Sur", fee: 2.50 },
-        { name: "Guasmo", fee: 3.00 },
-        { name: "Floresta", fee: 3.00 },
-        { name: "Pradera", fee: 3.00 },
-        { name: "Los Esteros", fee: 3.25 },
-        { name: "Trinitaria", fee: 3.50 },
-        { name: "Fertisa", fee: 3.50 },
+        "Alborada CC Plaza Mayor I": [
+            { name: "Alborada", fee: 2.00 },
+            { name: "Garzota", fee: 2.25 },
+            { name: "Sauces", fee: 2.50 },
+            { name: "Samanes", fee: 2.75 },
+            { name: "Guayacanes", fee: 2.75 },
+            { name: "Mucho Lote", fee: 3.00 },
+            { name: "Orquídeas", fee: 3.00 },
+            { name: "Vergeles", fee: 3.25 },
+            { name: "Bastión Popular", fee: 3.50 },
+            { name: "Pascuales", fee: 4.00 },
+            { name: "Kennedy", fee: 3.00 },
+            { name: "Urdesa", fee: 3.25 },
+            { name: "Mapasingue", fee: 3.50 },
+            { name: "Prosperina", fee: 3.75 }
+        ],
 
-        { name: "Urdesa", fee: 3.00 },
-        { name: "Kennedy", fee: 3.00 },
-        { name: "Garzota", fee: 3.00 },
-        { name: "Alborada", fee: 3.00 },
-        { name: "Sauces", fee: 3.00 },
-        { name: "Samanes", fee: 3.50 },
-        { name: "Mucho Lote", fee: 3.75 },
-        { name: "Mapasingue", fee: 3.50 },
-        { name: "Bastión Popular", fee: 4.00 },
-        { name: "Pascuales", fee: 4.50 },
-
-        { name: "Ceibos", fee: 4.00 },
-        { name: "Vía a la Costa", fee: 5.00 },
-        { name: "Puerto Azul", fee: 5.00 },
-        { name: "Samborondón", fee: 5.00 },
-        { name: "La Aurora", fee: 5.50 },
-        { name: "Daule", fee: 6.00 },
-        { name: "Durán", fee: 5.00 }
-    ];
+        "Sur": [
+            { name: "Centro", fee: 2.00 },
+            { name: "Bahía", fee: 2.00 },
+            { name: "9 de Octubre", fee: 2.25 },
+            { name: "Garay", fee: 2.25 },
+            { name: "Suburbio", fee: 2.50 },
+            { name: "Febres Cordero", fee: 2.50 },
+            { name: "Letamendi", fee: 2.50 },
+            { name: "García Moreno", fee: 2.50 },
+            { name: "Puerto Lisa", fee: 2.75 },
+            { name: "Batallón del Suburbio", fee: 2.75 },
+            { name: "Sur", fee: 2.50 },
+            { name: "Guasmo", fee: 3.00 },
+            { name: "Floresta", fee: 3.00 },
+            { name: "Pradera", fee: 3.00 },
+            { name: "Los Esteros", fee: 3.25 },
+            { name: "Trinitaria", fee: 3.50 },
+            { name: "Fertisa", fee: 3.50 },
+            { name: "Isla Trinitaria", fee: 3.75 }
+        ]
+    };
+    const deliveryZones = deliveryZonesByBranch[selectedBranch] || [];
 
     const branches = [
         {
@@ -547,6 +562,8 @@ function OrderPage() {
                                     type="button"
                                     onClick={() => {
                                         setSelectedBranch(branch.name);
+                                        setSelectedSector("");
+                                        setDeliveryFee("");
                                         setCart([]);
                                     }}
                                     className={`px-5 py-3 rounded-2xl border font-semibold transition-all ${selectedBranch === branch.name
@@ -818,16 +835,10 @@ function OrderPage() {
 
                                         <input
                                             type="text"
-                                            placeholder="Dirección de entrega"
+                                            placeholder="Marca tu ubicación en el mapa"
                                             value={deliveryAddress}
-                                            onChange={(event) => setDeliveryAddress(event.target.value)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === "Enter") {
-                                                    event.preventDefault();
-                                                    searchAddress();
-                                                }
-                                            }}
-                                            className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white"
+                                            readOnly
+                                            className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none bg-[#f7efe9] cursor-not-allowed text-[#4a352d]"
                                         />
                                     </div>
 
@@ -998,7 +1009,7 @@ function OrderPage() {
             </main>
             {showPaymentModal && (
                 <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center px-4">
-                    <div className="relative bg-[#fffaf7] w-full max-w-3xl rounded-[28px] shadow-2xl border border-[#eadfd7] p-6 md:p-8">
+                    <div className="relative bg-[#fffaf7] w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-[28px] shadow-2xl border border-[#eadfd7] p-6 md:p-8">
                         <button
                             type="button"
                             onClick={() => setShowPaymentModal(false)}
@@ -1018,7 +1029,7 @@ function OrderPage() {
                             Total final a pagar: <span className="font-bold">${formatPrice(finalTotal)}</span>
                         </p>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                             <div className="bg-white rounded-3xl border border-[#eadfd7] p-5">
                                 <div className="flex items-center gap-3 mb-4">
                                     <Building2 className="text-[#6F4E47]" size={28} />

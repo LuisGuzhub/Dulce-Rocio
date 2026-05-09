@@ -690,9 +690,87 @@ app.post("/api/orders", async (req, res) => {
             ]
         );
 
+        // =========================
+        // SISTEMA DE FIDELIDAD
+        // =========================
+
+        const totalPurchased = Number(quantity || 0);
+
+        // buscar si ya existe registro
+        const loyaltyResult = await pool.query(
+            `
+    SELECT * FROM loyalty_points
+    WHERE user_email = $1
+    `,
+            [customer_email]
+        );
+
+        if (loyaltyResult.rows.length === 0) {
+
+            let freeItems = 0;
+            let purchasedItems = totalPurchased;
+
+            if (purchasedItems >= 8) {
+                freeItems = Math.floor(purchasedItems / 8);
+                purchasedItems = purchasedItems % 8;
+            }
+
+            await pool.query(
+                `
+        INSERT INTO loyalty_points
+        (
+            user_email,
+            purchased_items,
+            free_items_available
+        )
+        VALUES ($1, $2, $3)
+        `,
+                [
+                    customer_email,
+                    purchasedItems,
+                    freeItems
+                ]
+            );
+
+        } else {
+
+            const loyalty = loyaltyResult.rows[0];
+
+            let purchasedItems =
+                Number(loyalty.purchased_items) + totalPurchased;
+
+            let freeItems =
+                Number(loyalty.free_items_available);
+
+            if (purchasedItems >= 8) {
+
+                const rewards = Math.floor(purchasedItems / 8);
+
+                freeItems += rewards;
+
+                purchasedItems = purchasedItems % 8;
+            }
+
+            await pool.query(
+                `
+        UPDATE loyalty_points
+        SET
+            purchased_items = $1,
+            free_items_available = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_email = $3
+        `,
+                [
+                    purchasedItems,
+                    freeItems,
+                    customer_email
+                ]
+            );
+        }
+
         res.json({
             message: "Pedido guardado correctamente",
-            orderId: result.rows[0].id,
+            orderId: result.rows[0].id
         });
     } catch (error) {
         console.error("Error guardando pedido:", error.message);
@@ -771,6 +849,83 @@ AND product_id = $4
         res.status(500).json({
             message: "Error actualizando stock"
         });
+    }
+});
+// =========================
+// FIDELIDAD
+// =========================
+
+app.get("/api/loyalty/me", verificarToken, async (req, res) => {
+    try {
+        const email = req.user.email;
+
+        let result = await pool.query(
+            `
+            SELECT *
+            FROM loyalty_points
+            WHERE user_email = $1
+            `,
+            [email]
+        );
+
+        if (result.rows.length === 0) {
+            await pool.query(
+                `
+                INSERT INTO loyalty_points
+                (user_email, purchased_items, free_items_available)
+                VALUES ($1, $2, $3)
+                `,
+                [email, 0, 0]
+            );
+
+            result = await pool.query(
+                `
+                SELECT *
+                FROM loyalty_points
+                WHERE user_email = $1
+                `,
+                [email]
+            );
+        }
+
+        res.json({
+            loyalty: result.rows[0]
+        });
+    } catch (error) {
+        console.error("Error obteniendo fidelidad:", error.message);
+        res.status(500).json({ message: "Error obteniendo fidelidad" });
+    }
+});
+
+app.get("/api/admin/loyalty", verificarToken, async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Acceso denegado" });
+        }
+
+        const result = await pool.query(
+            `
+            SELECT 
+                users.name,
+                users.email,
+                users.role,
+                COALESCE(loyalty_points.purchased_items, 0) AS purchased_items,
+                COALESCE(loyalty_points.free_items_available, 0) AS free_items_available,
+                loyalty_points.updated_at
+            FROM users
+            LEFT JOIN loyalty_points
+            ON users.email = loyalty_points.user_email
+            WHERE users.role = 'cliente'
+            ORDER BY users.created_at DESC
+            `
+        );
+
+        res.json({
+            loyalty: result.rows
+        });
+    } catch (error) {
+        console.error("Error obteniendo fidelidad admin:", error.message);
+        res.status(500).json({ message: "Error obteniendo fidelidad admin" });
     }
 });
 // =========================

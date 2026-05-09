@@ -6,6 +6,7 @@ export default function AdminDashboard() {
     const [orders, setOrders] = useState([]);
     const [users, setUsers] = useState([]);
     const [reviews, setReviews] = useState([]);
+    const [loyalty, setLoyalty] = useState([]);
     const [stock, setStock] = useState([]);
     const [selectedStockBranch, setSelectedStockBranch] = useState("Urb Plaza Madeira");
     const [section, setSection] = useState("dashboard");
@@ -82,6 +83,17 @@ export default function AdminDashboard() {
                     setStock(stockData.stock || []);
                 }
 
+                const resLoyalty = await fetch("https://dulce-rocio.onrender.com/api/admin/loyalty", {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (resLoyalty.ok) {
+                    const loyaltyData = await resLoyalty.json();
+                    setLoyalty(loyaltyData.loyalty || []);
+                }
+
                 setLoading(false);
 
             } catch (error) {
@@ -141,6 +153,7 @@ export default function AdminDashboard() {
                     {menuItem("Dashboard", "dashboard")}
                     {menuItem("Pedidos", "orders")}
                     {menuItem("Clientes", "clients")}
+                    {menuItem("Fidelidad", "loyalty")}
                     {menuItem("Productos", "products")}
                     {menuItem("Reseñas", "reviews")}
                 </nav>
@@ -247,6 +260,9 @@ export default function AdminDashboard() {
                             </tbody>
                         </table>
                     </section>
+                )}
+                {section === "loyalty" && (
+                    <LoyaltyTable loyalty={loyalty} />
                 )}
 
                 {section === "products" && (
@@ -462,8 +478,8 @@ function ProductsInventory({
                         type="button"
                         onClick={() => setSelectedStockBranch(branch)}
                         className={`px-5 py-3 rounded-xl font-semibold border transition ${selectedStockBranch === branch
-                                ? "bg-[#6F4E47] text-white border-[#6F4E47]"
-                                : "bg-white text-[#6F4E47] border-[#eadfd7]"
+                            ? "bg-[#6F4E47] text-white border-[#6F4E47]"
+                            : "bg-white text-[#6F4E47] border-[#eadfd7]"
                             }`}
                     >
                         {branch}
@@ -525,6 +541,51 @@ function ProductsInventory({
         </section>
     );
 }
+
+function LoyaltyTable({ loyalty }) {
+    return (
+        <section className="bg-white rounded-2xl p-6 shadow-sm overflow-x-auto">
+            <h3 className="text-xl font-bold mb-4 text-[#3b241b]">
+                Fidelidad de clientes
+            </h3>
+
+            <table className="w-full text-left min-w-[700px]">
+                <thead className="bg-[#f7efe9]">
+                    <tr>
+                        <th className="p-4">Cliente</th>
+                        <th className="p-4">Correo</th>
+                        <th className="p-4">Progreso</th>
+                        <th className="p-4">Postres gratis</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {loyalty.length === 0 ? (
+                        <tr>
+                            <td className="p-4 text-gray-500" colSpan="4">
+                                Todavía no hay datos de fidelidad.
+                            </td>
+                        </tr>
+                    ) : (
+                        loyalty.map((item) => (
+                            <tr key={item.email} className="border-t">
+                                <td className="p-4">{item.name}</td>
+                                <td className="p-4">{item.email}</td>
+                                <td className="p-4 font-semibold">
+                                    {item.purchased_items} / 8
+                                </td>
+                                <td className="p-4 font-bold text-[#d78963]">
+                                    {item.free_items_available}
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </section>
+    );
+}
+
 function ReviewsTable({ reviews }) {
     return (
         <section className="bg-white rounded-2xl p-6 shadow-sm overflow-x-auto">
