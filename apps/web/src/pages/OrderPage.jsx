@@ -94,6 +94,7 @@ function OrderPage() {
     const [deliveryFee, setDeliveryFee] = useState('');
     const [selectedSector, setSelectedSector] = useState('');
     const [selectedBranch, setSelectedBranch] = useState("Sur");
+    const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [selectedPosition, setSelectedPosition] = useState([
         -2.170998,
@@ -111,6 +112,23 @@ function OrderPage() {
             setCustomerName(userData.name || "");
             setCustomerEmail(userData.email || "");
         }
+    }, []);
+
+    useEffect(() => {
+        const loadStock = async () => {
+            try {
+                const response = await fetch("https://dulce-rocio.onrender.com/api/products-stock");
+
+                if (response.ok) {
+                    const data = await response.json();
+                    setStock(data.stock || []);
+                }
+            } catch (error) {
+                console.error("Error cargando stock:", error);
+            }
+        };
+
+        loadStock();
     }, []);
     const deliveryZones = [
         { name: "Centro", fee: 2.00 },
@@ -532,8 +550,8 @@ function OrderPage() {
                                         setCart([]);
                                     }}
                                     className={`px-5 py-3 rounded-2xl border font-semibold transition-all ${selectedBranch === branch.name
-                                            ? "bg-[#6F4E47] text-white border-[#6F4E47] shadow-md"
-                                            : "bg-white text-[#6F4E47] border-[#eadfd7] hover:bg-[#f7e7dc]"
+                                        ? "bg-[#6F4E47] text-white border-[#6F4E47] shadow-md"
+                                        : "bg-white text-[#6F4E47] border-[#eadfd7] hover:bg-[#f7e7dc]"
                                         }`}
                                 >
                                     <span className="block">{branch.name}</span>
@@ -569,10 +587,17 @@ function OrderPage() {
                         </button>
 
                         <div ref={scrollRef} className="flex gap-6 overflow-x-auto scroll-smooth px-2 pb-4">
-                            {availableProducts.map((product) => {
+                            {products.map((product) => {
                                 const cartItem = cart.find((item) => item.id === product.id);
                                 const quantityInCart = cartItem ? cartItem.quantity : 0;
-                                const subtotal = cartItem ? cartItem.quantity * cartItem.price : 0;
+                                const subtotal = cartItem ? cartItem.quantity * product.price : 0;
+
+                                const stockItem = stock.find((item) => {
+                                    return item.branch_name === selectedBranch && item.product_id === product.id;
+                                });
+
+                                const availableQuantity = Number(stockItem?.stock_quantity || 0);
+                                const isOutOfStock = availableQuantity <= 0;
 
                                 return (
                                     <article
@@ -598,6 +623,9 @@ function OrderPage() {
                                             <p className="text-[#6F4E47] font-semibold text-lg mb-3">
                                                 ${formatPrice(product.price)}
                                             </p>
+                                            <p className={`text-sm font-bold mb-3 ${isOutOfStock ? "text-red-600" : "text-green-600"}`}>
+                                                {isOutOfStock ? "Agotado" : `En stock: ${availableQuantity}`}
+                                            </p>
 
                                             <p className="text-sm leading-7 text-[#5d473f] min-h-[96px]">
                                                 {product.description}
@@ -605,11 +633,22 @@ function OrderPage() {
 
                                             <button
                                                 type="button"
-                                                onClick={() => addToCart(product)}
-                                                className="inline-flex items-center justify-center gap-2 mt-4 bg-[#fff7f2] hover:bg-[#f7e7dc] text-[#6F4E47] font-medium px-5 py-3 rounded-full transition-colors"
+                                                disabled={isOutOfStock}
+                                                onClick={() => {
+                                                    if (quantityInCart >= availableQuantity) {
+                                                        alert(`Solo hay ${availableQuantity} disponibles en ${selectedBranch}.`);
+                                                        return;
+                                                    }
+
+                                                    addToCart(product);
+                                                }}
+                                                className={`inline-flex items-center justify-center gap-2 mt-4 font-medium px-5 py-3 rounded-full transition-colors ${isOutOfStock
+                                                    ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                                    : "bg-[#fff7f2] hover:bg-[#f7e7dc] text-[#6F4E47]"
+                                                    }`}
                                             >
                                                 <ShoppingCart size={18} />
-                                                Agregar al carrito
+                                                {isOutOfStock ? "Agotado" : "Agregar al carrito"}
                                             </button>
 
                                             <div className="mt-4 bg-[#f8eee8] border border-[#edd7ca] rounded-[18px] p-3">
@@ -637,6 +676,11 @@ function OrderPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => {
+                                                            if (quantityInCart >= availableQuantity) {
+                                                                alert(`Solo hay ${availableQuantity} disponibles en ${selectedBranch}.`);
+                                                                return;
+                                                            }
+
                                                             if (quantityInCart === 0) {
                                                                 addToCart(product);
                                                             } else {

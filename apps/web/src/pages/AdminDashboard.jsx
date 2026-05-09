@@ -83,7 +83,7 @@ export default function AdminDashboard() {
                 }
 
                 setLoading(false);
-                
+
             } catch (error) {
                 console.error(error);
                 localStorage.removeItem("token");
@@ -376,39 +376,26 @@ function ProductsInventory({
     selectedStockBranch,
     setSelectedStockBranch
 }) {
+    const [localStock, setLocalStock] = useState([]);
+
     const branches = [
         "Urb Plaza Madeira",
         "Alborada CC Plaza Mayor I",
         "Sur"
     ];
 
-    const branchStock = stock.filter((item) => {
+    useEffect(() => {
+        setLocalStock(stock);
+    }, [stock]);
+
+    const branchStock = localStock.filter((item) => {
         return item.branch_name === selectedStockBranch;
     });
 
-    const updateQuantity = async (item, newQuantity) => {
-        const token = localStorage.getItem("token");
-        const quantity = Number(newQuantity);
+    const updateLocalQuantity = (item, newQuantity) => {
+        const quantity = Math.max(0, Number(newQuantity));
 
-        const response = await fetch("https://dulce-rocio.onrender.com/api/admin/update-stock", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                branch_name: item.branch_name,
-                product_id: item.product_id,
-                stock_quantity: quantity
-            }),
-        });
-
-        if (!response.ok) {
-            alert("No se pudo actualizar el inventario.");
-            return;
-        }
-
-        setStock((currentStock) =>
+        setLocalStock((currentStock) =>
             currentStock.map((stockItem) => {
                 if (
                     stockItem.branch_name === item.branch_name &&
@@ -424,6 +411,38 @@ function ProductsInventory({
                 return stockItem;
             })
         );
+    };
+
+    const saveBranchInventory = async () => {
+        const token = localStorage.getItem("token");
+
+        try {
+            for (const item of branchStock) {
+                const response = await fetch("https://dulce-rocio.onrender.com/api/admin/update-stock", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({
+                        branch_name: item.branch_name,
+                        product_id: item.product_id,
+                        stock_quantity: Number(item.stock_quantity)
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error("No se pudo actualizar un producto.");
+                }
+            }
+
+            setStock(localStock);
+
+            alert(`Inventario actualizado para ${selectedStockBranch}`);
+        } catch (error) {
+            console.error(error);
+            alert("Hubo un error actualizando el inventario.");
+        }
     };
 
     return (
@@ -474,7 +493,7 @@ function ProductsInventory({
                                         type="number"
                                         min="0"
                                         value={item.stock_quantity ?? 0}
-                                        onChange={(event) => updateQuantity(item, event.target.value)}
+                                        onChange={(event) => updateLocalQuantity(item, event.target.value)}
                                         className="w-28 border border-[#eadfd7] rounded-xl px-3 py-2 outline-none focus:border-[#6F4E47]"
                                     />
                                 </td>
@@ -495,6 +514,14 @@ function ProductsInventory({
                     </tbody>
                 </table>
             </div>
+
+            <button
+                type="button"
+                onClick={saveBranchInventory}
+                className="mt-6 bg-[#d78963] hover:bg-[#c97752] text-white px-6 py-3 rounded-xl font-semibold shadow-md transition"
+            >
+                Actualizar inventario para {selectedStockBranch}
+            </button>
         </section>
     );
 }
