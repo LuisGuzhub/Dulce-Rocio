@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
@@ -41,7 +40,7 @@ function ContactPage() {
         <title>Contacto - Dulce Rocío</title>
         <meta
           name="description"
-          content="Contáctanos para pedir tiramisús, pavés y brownies. Completa el formulario y te ayudaremos a elegir el postre perfecto para tu pedido."
+          content="Envíanos solicitudes especiales, pedidos personalizados y consultas sobre tiramisú, brownies, pavés, mesas dulces y eventos."
         />
       </Helmet>
 
@@ -61,12 +60,13 @@ function ContactPage() {
                   className="heading-serif text-4xl md:text-5xl font-bold text-foreground mb-6 text-balance leading-tight"
                   style={{ letterSpacing: '-0.02em' }}
                 >
-                  Hablemos de tu pedido
+                  Cuéntanos tu idea dulce
                 </h1>
 
                 <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-                  Completa el formulario y cuéntanos qué postre deseas.
-                  En Dulce Rocío preparamos tiramisús, pavés y brownies con una presentación deliciosa y cuidada.
+                  Completa el formulario para enviarnos solicitudes especiales,
+                  pedidos personalizados, consultas sobre tiramisú, brownies,
+                  pavés, mesas dulces o cualquier detalle para tu evento.
                 </p>
               </motion.div>
 
@@ -78,7 +78,7 @@ function ContactPage() {
                 >
                   <div className="bg-card rounded-2xl p-8 shadow-lg">
                     <h2 className="heading-serif text-2xl font-semibold mb-6 text-balance">
-                      Solicitud de pedido
+                      Solicitudes especiales y pedidos personalizados
                     </h2>
                     <ContactForm />
                   </div>

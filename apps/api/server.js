@@ -82,6 +82,21 @@ async function crearTablas() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS contact_requests (
+                id SERIAL PRIMARY KEY,
+                customer_name TEXT NOT NULL,
+                customer_email TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                product_type TEXT,
+                requested_date DATE,
+                message TEXT NOT NULL,
+                status TEXT DEFAULT 'pendiente',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
         await pool.query(`
     CREATE TABLE IF NOT EXISTS loyalty_points (
         id SERIAL PRIMARY KEY,
@@ -600,9 +615,90 @@ app.get("/api/admin/users", verificarToken, async (req, res) => {
     }
 });
 
+app.get("/api/admin/contact-requests", verificarToken, async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Acceso denegado" });
+        }
+
+        const result = await pool.query(
+            "SELECT * FROM contact_requests ORDER BY created_at DESC"
+        );
+
+        res.json({
+            requests: result.rows,
+        });
+    } catch (error) {
+        console.error("Error obteniendo solicitudes:", error.message);
+        res.status(500).json({ message: "Error obteniendo solicitudes" });
+    }
+});
+
+app.patch("/api/admin/contact-requests/:id/read", verificarToken, async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Acceso denegado" });
+        }
+
+        await pool.query(
+            "UPDATE contact_requests SET status = 'leído' WHERE id = $1",
+            [req.params.id]
+        );
+
+        res.json({ message: "Solicitud marcada como leída" });
+    } catch (error) {
+        console.error("Error actualizando solicitud:", error.message);
+        res.status(500).json({ message: "Error actualizando solicitud" });
+    }
+});
+
 // =========================
 // PEDIDOS
 // =========================
+
+app.post("/api/contact-requests", async (req, res) => {
+    try {
+        const {
+            name,
+            email,
+            phone,
+            productType,
+            requestedDate,
+            message
+        } = req.body;
+
+        if (!name || !email || !phone || !message) {
+            return res.status(400).json({
+                message: "Nombre, correo, teléfono y mensaje son obligatorios"
+            });
+        }
+
+        const result = await pool.query(
+            `
+            INSERT INTO contact_requests
+            (customer_name, customer_email, phone, product_type, requested_date, message)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            `,
+            [
+                name,
+                email,
+                phone,
+                productType || null,
+                requestedDate || null,
+                message
+            ]
+        );
+
+        res.json({
+            message: "Solicitud enviada correctamente",
+            requestId: result.rows[0].id
+        });
+    } catch (error) {
+        console.error("Error guardando solicitud:", error.message);
+        res.status(500).json({ message: "Error al guardar la solicitud" });
+    }
+});
 
 app.post("/api/orders/create", async (req, res) => {
     try {
@@ -816,6 +912,131 @@ app.post("/api/orders", async (req, res) => {
     } catch (error) {
         console.error("Error guardando pedido:", error.message);
         res.status(500).json({ message: "Error al guardar pedido" });
+    }
+});
+
+app.post("/api/payphone/link", verificarToken, async (req, res) => {
+    try {
+        const {
+            cart,
+            subtotal,
+            delivery_fee,
+            total,
+            delivery_type,
+            sector,
+            pickup_branch
+        } = req.body;
+
+        if (!cart || cart.length === 0) {
+            return res.status(400).json({ message: "El carrito está vacío" });
+        }
+
+        if (!["delivery", "pickup"].includes(delivery_type)) {
+            return res.status(400).json({ message: "Tipo de entrega inválido" });
+        }
+
+        const subtotalValue = Number(subtotal);
+        const cartSubtotal = Number(cart.reduce((sum, item) => {
+            const quantity = Number(item.quantity);
+            const price = Number(item.price);
+
+            if (!Number.isFinite(quantity) || !Number.isFinite(price) || quantity <= 0 || price < 0) {
+                return Number.NaN;
+            }
+
+            return sum + (price * quantity);
+        }, 0).toFixed(2));
+        const deliveryFeeValue = delivery_type === "pickup" ? 0 : Number(delivery_fee || 0);
+        const totalValue = Number(total);
+        const expectedTotal = Number((subtotalValue + deliveryFeeValue).toFixed(2));
+
+        if (!Number.isFinite(subtotalValue) || !Number.isFinite(totalValue) || !Number.isFinite(cartSubtotal) || totalValue <= 0) {
+            return res.status(400).json({ message: "Total inválido" });
+        }
+
+        if (Number(subtotalValue.toFixed(2)) !== cartSubtotal) {
+            return res.status(400).json({ message: "El subtotal no coincide con los productos del carrito" });
+        }
+
+        if (Number(totalValue.toFixed(2)) !== expectedTotal) {
+            return res.status(400).json({ message: "El total no coincide con el subtotal y delivery" });
+        }
+
+        if (delivery_type === "delivery" && !sector) {
+            return res.status(400).json({ message: "Debes seleccionar un sector" });
+        }
+
+        if (delivery_type === "pickup" && !pickup_branch) {
+            return res.status(400).json({ message: "Debes seleccionar un punto de recogida" });
+        }
+
+        if (!process.env.PAYPHONE_TOKEN) {
+            return res.status(501).json({
+                message: "PayPhone no está configurado. Falta PAYPHONE_TOKEN en el backend."
+            });
+        }
+
+        const amountInCents = Math.round(totalValue * 100);
+        const clientTransactionId = `DR${Date.now().toString(36)}`.slice(0, 15);
+        const productSummary = cart
+            .map((item) => `${item.name} x${item.quantity}`)
+            .join(", ")
+            .slice(0, 180);
+
+        const payload = {
+            amount: amountInCents,
+            amountWithoutTax: amountInCents,
+            currency: "USD",
+            reference: `Dulce Rocío ${clientTransactionId}`,
+            clientTransactionId,
+            additionalData: productSummary,
+            oneTime: true,
+            expireIn: 1,
+            isAmountEditable: false
+        };
+
+        if (process.env.PAYPHONE_STORE_ID) {
+            payload.storeId = process.env.PAYPHONE_STORE_ID;
+        }
+
+        const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const data = contentType.includes("application/json")
+            ? await response.json()
+            : await response.text();
+
+        if (!response.ok) {
+            return res.status(502).json({
+                message: "No se pudo generar el link de PayPhone",
+                details: data
+            });
+        }
+
+        const paymentUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
+
+        if (!paymentUrl) {
+            return res.status(502).json({
+                message: "PayPhone no devolvió un link válido",
+                details: data
+            });
+        }
+
+        res.json({
+            paymentUrl,
+            amount: amountInCents,
+            clientTransactionId
+        });
+    } catch (error) {
+        console.error("Error generando link PayPhone:", error.message);
+        res.status(500).json({ message: "Error generando link PayPhone" });
     }
 });
 // =========================

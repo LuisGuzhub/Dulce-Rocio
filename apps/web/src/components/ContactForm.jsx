@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,13 +17,14 @@ function ContactForm() {
     deliveryDate: '',
     message: ''
   });
+
   useEffect(() => {
     const user = localStorage.getItem("user");
 
     if (user) {
       const parsed = JSON.parse(user);
 
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         name: parsed.name || "",
         email: parsed.email || ""
@@ -32,22 +32,18 @@ function ContactForm() {
     }
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (value) => {
-    setFormData(prev => ({ ...prev, eventType: value }));
-  };
+  const handleSubmit = async (event) => {
+    event.preventDefault();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!formData.name || !formData.email || !formData.phone || !formData.productType || !formData.deliveryDate) {
+    if (!formData.name || !formData.email || !formData.phone || !formData.message) {
       toast({
         title: "Campos requeridos",
-        description: "Por favor completa todos los campos obligatorios.",
+        description: "Por favor completa nombre, correo, celular y mensaje.",
         variant: "destructive"
       });
       return;
@@ -56,7 +52,7 @@ function ContactForm() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch("https://dulce-rocio.onrender.com/api/orders/create", {
+      const response = await fetch("https://dulce-rocio.onrender.com/api/contact-requests", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -65,21 +61,21 @@ function ContactForm() {
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
-          product: formData.productType,
-          date: formData.deliveryDate,
+          productType: formData.productType,
+          requestedDate: formData.deliveryDate,
           message: formData.message
         })
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         throw new Error(data.message);
       }
 
       toast({
         title: "Solicitud enviada",
-        description: "Gracias por tu interés. Te contactaremos pronto para discutir los detalles de tu pedido."
+        description: "Gracias por tu mensaje. Te contactaremos pronto para ayudarte con tu pedido especial."
       });
 
       setFormData({
@@ -100,11 +96,13 @@ function ContactForm() {
       setIsSubmitting(false);
     }
   };
+
   const today = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
   const minDate = tomorrow.toISOString().split("T")[0];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -144,7 +142,7 @@ function ContactForm() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
           <Label htmlFor="phone" className="text-sm font-medium">
-            Teléfono *
+            Celular *
           </Label>
           <Input
             id="phone"
@@ -160,17 +158,23 @@ function ContactForm() {
 
         <div className="space-y-2">
           <Label htmlFor="productType" className="text-sm font-medium">
-            Tipo de postre *
+            Tipo de solicitud
           </Label>
-          <Select value={formData.productType} onValueChange={(value) => setFormData(prev => ({ ...prev, productType: value }))} required>
+          <Select
+            value={formData.productType}
+            onValueChange={(value) => setFormData((prev) => ({ ...prev, productType: value }))}
+          >
             <SelectTrigger id="productType" className="text-foreground">
-              <SelectValue placeholder="Selecciona un postre" />
+              <SelectValue placeholder="Selecciona una opción" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="tiramisu">Tiramisú</SelectItem>
               <SelectItem value="pave">Pavé</SelectItem>
               <SelectItem value="brownies">Brownies</SelectItem>
+              <SelectItem value="mesa-dulce">Mesa dulce</SelectItem>
+              <SelectItem value="pedido-personalizado">Pedido personalizado</SelectItem>
               <SelectItem value="combo">Combo (varios postres)</SelectItem>
+              <SelectItem value="consulta">Consulta general</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -178,7 +182,7 @@ function ContactForm() {
 
       <div className="space-y-2">
         <Label htmlFor="deliveryDate" className="text-sm font-medium">
-          Fecha de entrega *
+          Fecha tentativa
         </Label>
         <Input
           id="deliveryDate"
@@ -187,22 +191,22 @@ function ContactForm() {
           min={minDate}
           value={formData.deliveryDate}
           onChange={handleChange}
-          required
         />
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="message" className="text-sm font-medium">
-          Mensaje / Solicitudes especiales
+          Mensaje / Solicitudes especiales *
         </Label>
         <Textarea
           id="message"
           name="message"
           value={formData.message}
           onChange={handleChange}
-          rows={5}
+          rows={6}
+          required
           className="text-foreground placeholder:text-muted-foreground resize-none"
-          placeholder="Cuéntanos qué postre deseas, sabor, tamaño o cualquier detalle especial..."
+          placeholder="Cuéntanos si necesitas tiramisú, brownies, pavés, mesa dulce, cantidades, sabores, presupuesto o cualquier detalle especial..."
         />
       </div>
 

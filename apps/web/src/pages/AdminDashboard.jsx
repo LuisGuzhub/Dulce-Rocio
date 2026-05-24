@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Package, Users, ShoppingBag, Star, LogOut, Eye } from "lucide-react";
+import { Package, Users, ShoppingBag, Star, LogOut, Eye, MessageSquare } from "lucide-react";
 
 export default function AdminDashboard() {
     const [user, setUser] = useState(null);
     const [orders, setOrders] = useState([]);
     const [users, setUsers] = useState([]);
     const [reviews, setReviews] = useState([]);
+    const [contactRequests, setContactRequests] = useState([]);
     const [loyalty, setLoyalty] = useState([]);
     const [stock, setStock] = useState([]);
     const [selectedStockBranch, setSelectedStockBranch] = useState("Urb Plaza Madeira");
@@ -76,6 +77,17 @@ export default function AdminDashboard() {
                     setReviews(reviewsData.reviews || []);
                 }
 
+                const resContactRequests = await fetch("https://dulce-rocio.onrender.com/api/admin/contact-requests", {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (resContactRequests.ok) {
+                    const requestsData = await resContactRequests.json();
+                    setContactRequests(requestsData.requests || []);
+                }
+
                 const resStock = await fetch("https://dulce-rocio.onrender.com/api/products-stock");
 
                 if (resStock.ok) {
@@ -139,6 +151,7 @@ export default function AdminDashboard() {
         { title: "Pedidos", value: orders.length, icon: ShoppingBag },
         { title: "Clientes", value: users.length, icon: Users },
         { title: "Productos", value: "0", icon: Package },
+        { title: "Solicitudes", value: contactRequests.length, icon: MessageSquare },
         { title: "Reseñas", value: reviews.length, icon: Star },
     ];
 
@@ -155,6 +168,7 @@ export default function AdminDashboard() {
                     {menuItem("Clientes", "clients")}
                     {menuItem("Fidelidad", "loyalty")}
                     {menuItem("Productos", "products")}
+                    {menuItem("Mensajes / Solicitudes", "requests")}
                     {menuItem("Reseñas", "reviews")}
                 </nav>
 
@@ -176,6 +190,7 @@ export default function AdminDashboard() {
                             {section === "dashboard" && "Bienvenido, Admin"}
                             {section === "orders" && "Gestión de pedidos"}
                             {section === "clients" && "Clientes registrados"}
+                            {section === "requests" && "Mensajes / Solicitudes"}
                             {section === "products" && "Gestión de productos"}
                             {section === "reviews" && "Reseñas de clientes"}
                         </h2>
@@ -271,6 +286,13 @@ export default function AdminDashboard() {
                         setStock={setStock}
                         selectedStockBranch={selectedStockBranch}
                         setSelectedStockBranch={setSelectedStockBranch}
+                    />
+                )}
+
+                {section === "requests" && (
+                    <ContactRequestsTable
+                        requests={contactRequests}
+                        setRequests={setContactRequests}
                     />
                 )}
 
@@ -576,6 +598,104 @@ function LoyaltyTable({ loyalty }) {
                                 </td>
                                 <td className="p-4 font-bold text-[#d78963]">
                                     {item.free_items_available}
+                                </td>
+                            </tr>
+                        ))
+                    )}
+                </tbody>
+            </table>
+        </section>
+    );
+}
+
+function ContactRequestsTable({ requests, setRequests }) {
+    const markAsRead = async (requestId) => {
+        const token = localStorage.getItem("token");
+
+        try {
+            const response = await fetch(`https://dulce-rocio.onrender.com/api/admin/contact-requests/${requestId}/read`, {
+                method: "PATCH",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error("No se pudo actualizar la solicitud.");
+            }
+
+            setRequests((currentRequests) =>
+                currentRequests.map((request) =>
+                    request.id === requestId
+                        ? { ...request, status: "leído" }
+                        : request
+                )
+            );
+        } catch (error) {
+            console.error(error);
+            alert("No se pudo marcar la solicitud como leída.");
+        }
+    };
+
+    return (
+        <section className="bg-white rounded-2xl p-6 shadow-sm overflow-x-auto">
+            <h3 className="text-xl font-bold mb-4 text-[#3b241b]">
+                Mensajes y solicitudes de contacto
+            </h3>
+
+            <table className="w-full text-left min-w-[1000px]">
+                <thead className="bg-[#f7efe9]">
+                    <tr>
+                        <th className="p-4">Cliente</th>
+                        <th className="p-4">Correo</th>
+                        <th className="p-4">Celular</th>
+                        <th className="p-4">Tipo</th>
+                        <th className="p-4">Mensaje</th>
+                        <th className="p-4">Fecha</th>
+                        <th className="p-4">Estado</th>
+                        <th className="p-4">Acción</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {requests.length === 0 ? (
+                        <tr>
+                            <td className="p-4 text-gray-500" colSpan="8">
+                                Todavía no hay mensajes o solicitudes registradas.
+                            </td>
+                        </tr>
+                    ) : (
+                        requests.map((request) => (
+                            <tr key={request.id} className="border-t align-top">
+                                <td className="p-4 font-semibold">{request.customer_name}</td>
+                                <td className="p-4">{request.customer_email}</td>
+                                <td className="p-4">{request.phone}</td>
+                                <td className="p-4">{request.product_type || "Consulta"}</td>
+                                <td className="p-4 max-w-md whitespace-pre-wrap">{request.message}</td>
+                                <td className="p-4">
+                                    {new Date(request.created_at).toLocaleString()}
+                                </td>
+                                <td className="p-4">
+                                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${request.status === "leído"
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-[#f7efe9] text-[#7a4a35]"
+                                        }`}
+                                    >
+                                        {request.status || "pendiente"}
+                                    </span>
+                                </td>
+                                <td className="p-4">
+                                    {request.status === "leído" ? (
+                                        <span className="text-sm text-gray-500">Atendido</span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => markAsRead(request.id)}
+                                            className="bg-[#d78963] hover:bg-[#c97752] text-white px-4 py-2 rounded-xl font-semibold transition"
+                                        >
+                                            Marcar leído
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))

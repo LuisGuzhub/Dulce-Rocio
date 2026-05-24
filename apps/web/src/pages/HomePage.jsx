@@ -85,19 +85,23 @@ function HomePage() {
                 transition={{ duration: 0.6 }}
               >
                 <h1
-                  className="heading-chunky 
+                  className="
   text-[2.6rem] 
   sm:text-5xl 
   md:text-6xl 
   lg:text-8xl 
   text-white 
-  leading-[0.95] 
+  font-black
+  uppercase
+  leading-[0.96]
   sm:leading-[1.05] 
   mb-5"
                   style={{
+                    fontFamily: '"Playfair Display", serif',
+                    letterSpacing: '0.01em',
                     textShadow: `
-      1.5px 1.5px 0px rgba(79,49,36,0.35),
-      3px 3px 0px rgba(79,49,36,0.18)
+      0 5px 22px rgba(45,29,23,0.55),
+      0 1px 0 rgba(255,255,255,0.18)
     `
                   }}
                 >
@@ -113,8 +117,8 @@ function HomePage() {
                   Transformamos tus momentos especiales en experiencias dulces inolvidables con diseños únicos y sabores excepcionales
                 </p>
                 <Link
-                  to="/contact"
-                  onClick={(e) => requireAuth(e, "/contact")}
+                  to="/order"
+                  onClick={(e) => requireAuth(e, "/order")}
                 >
                   <Button
                     size="lg"
@@ -313,8 +317,8 @@ function HomePage() {
                 </p>
 
                 <Link
-                  to="/contact"
-                  onClick={(e) => requireAuth(e, "/contact")}
+                  to="/order"
+                  onClick={(e) => requireAuth(e, "/order")}
                 >
                   <Button
                     size="lg"

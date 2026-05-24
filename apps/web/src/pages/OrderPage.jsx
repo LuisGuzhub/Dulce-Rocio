@@ -98,6 +98,7 @@ function OrderPage() {
     const [selectedPickupBranch, setSelectedPickupBranch] = useState('');
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [isCreatingPayphoneLink, setIsCreatingPayphoneLink] = useState(false);
     const [savedCarts, setSavedCarts] = useState([]);
     const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
     const autoRestoredCart = useRef(false);
@@ -107,7 +108,6 @@ function OrderPage() {
     ]);
 
     const apiBaseUrl = "https://dulce-rocio.onrender.com";
-    const payphonePaymentLink = "https://ppls.me/BIKDskIgJy8yEfY3c4Q9IQ";
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
 
@@ -504,6 +504,58 @@ function OrderPage() {
         }
 
         setShowPaymentModal(true);
+    };
+
+    const openPayphonePayment = async () => {
+        if (!validateOrderReadyForPayment()) {
+            return;
+        }
+
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+            alert("Inicia sesion para generar el link de pago seguro.");
+            return;
+        }
+
+        setIsCreatingPayphoneLink(true);
+
+        try {
+            const response = await fetch(`${apiBaseUrl}/api/payphone/link`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    cart: cart.map((item) => ({
+                        id: item.id,
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.quantity
+                    })),
+                    subtotal: totalPrice,
+                    delivery_fee: deliveryType === "pickup" ? 0 : Number(deliveryFee || 0),
+                    total: finalTotal,
+                    delivery_type: deliveryType,
+                    sector: selectedSector,
+                    pickup_branch: selectedPickupBranch
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "No se pudo generar el link de PayPhone.");
+            }
+
+            window.open(data.paymentUrl, "_blank", "noopener,noreferrer");
+        } catch (error) {
+            console.error("Error generando pago PayPhone:", error);
+            alert(error.message || "No se pudo generar el link de PayPhone.");
+        } finally {
+            setIsCreatingPayphoneLink(false);
+        }
     };
 
     const addToCart = (product) => {
@@ -1481,19 +1533,19 @@ function OrderPage() {
                                 </div>
 
                                 <p className="text-[#4a352d] leading-7 mb-5">
-                                    Paga con tarjeta mediante PayPhone. Al abrirse el enlace, ingresa el monto exacto:
-                                    <strong> ${formatPrice(finalTotal)}</strong>.
+                                    Paga con tarjeta mediante PayPhone. Generaremos un link seguro por
+                                    <strong> ${formatPrice(finalTotal)}</strong> y el monto no podra editarse.
                                 </p>
 
-                                <a
-                                    href={payphonePaymentLink}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                                <button
+                                    type="button"
+                                    onClick={openPayphonePayment}
+                                    disabled={isCreatingPayphoneLink}
+                                    className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
                                 >
                                     <ExternalLink size={20} />
-                                    Pagar con PayPhone
-                                </a>
+                                    {isCreatingPayphoneLink ? "Generando link..." : "Pagar monto exacto"}
+                                </button>
                             </div>
                         </div>
                     </div>
