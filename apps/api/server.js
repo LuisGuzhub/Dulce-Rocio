@@ -916,6 +916,8 @@ app.post("/api/orders", async (req, res) => {
 });
 
 app.post("/api/payphone/link", verificarToken, async (req, res) => {
+    let manualFallback = null;
+
     try {
         const {
             cart,
@@ -970,36 +972,35 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             return res.status(400).json({ message: "Debes seleccionar un punto de recogida" });
         }
 
-        if (!process.env.PAYPHONE_TOKEN) {
-            return res.json({
-                mode: "manual",
-                message: "Pago automático próximamente disponible.",
-                amount: Math.round(totalValue * 100),
-                summary: {
-                    subtotal: subtotalValue,
-                    deliveryFee: deliveryFeeValue,
-                    total: totalValue,
-                    deliveryType: delivery_type,
-                    sector: delivery_type === "delivery" ? sector : null,
-                    pickupBranch: delivery_type === "pickup" ? pickup_branch : null,
-                    products: cart
-                        .map((item) => `${item.name} x${item.quantity}`)
-                        .join(", ")
-                        .slice(0, 180),
-                    paymentMethods: [
-                        "Transferencia bancaria",
-                        "Confirmación por WhatsApp"
-                    ]
-                }
-            });
-        }
-
         const amountInCents = Math.round(totalValue * 100);
         const clientTransactionId = `DR${Date.now().toString(36)}`.slice(0, 15);
         const productSummary = cart
             .map((item) => `${item.name} x${item.quantity}`)
             .join(", ")
             .slice(0, 180);
+
+        manualFallback = {
+            mode: "manual",
+            message: "Pago automático próximamente disponible.",
+            amount: amountInCents,
+            summary: {
+                subtotal: subtotalValue,
+                deliveryFee: deliveryFeeValue,
+                total: totalValue,
+                deliveryType: delivery_type,
+                sector: delivery_type === "delivery" ? sector : null,
+                pickupBranch: delivery_type === "pickup" ? pickup_branch : null,
+                products: productSummary,
+                paymentMethods: [
+                    "Transferencia bancaria",
+                    "Confirmación por WhatsApp"
+                ]
+            }
+        };
+
+        if (!process.env.PAYPHONE_TOKEN) {
+            return res.json(manualFallback);
+        }
 
         const payload = {
             amount: amountInCents,
@@ -1032,19 +1033,15 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             : await response.text();
 
         if (!response.ok) {
-            return res.status(502).json({
-                message: "No se pudo generar el link de PayPhone",
-                details: data
-            });
+            console.error("PayPhone respondió error:", data);
+            return res.json(manualFallback);
         }
 
         const paymentUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
 
         if (!paymentUrl) {
-            return res.status(502).json({
-                message: "PayPhone no devolvió un link válido",
-                details: data
-            });
+            console.error("PayPhone no devolvió un link válido:", data);
+            return res.json(manualFallback);
         }
 
         res.json({
@@ -1054,6 +1051,10 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         });
     } catch (error) {
         console.error("Error generando link PayPhone:", error.message);
+        if (manualFallback) {
+            return res.json(manualFallback);
+        }
+
         res.status(500).json({ message: "Error generando link PayPhone" });
     }
 });
