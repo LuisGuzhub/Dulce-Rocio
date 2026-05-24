@@ -1023,6 +1023,10 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         const payload = {
             amount: amountInCents,
             amountWithoutTax: amountInCents,
+            amountWithTax: 0,
+            tax: 0,
+            service: 0,
+            tip: 0,
             currency: "USD",
             reference: `Dulce Rocío ${clientTransactionId}`,
             clientTransactionId,
