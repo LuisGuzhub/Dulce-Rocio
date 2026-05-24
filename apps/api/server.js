@@ -998,7 +998,25 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             }
         };
 
+        const hasPayphoneToken = Boolean(process.env.PAYPHONE_TOKEN);
+        const payphoneTokenLength = process.env.PAYPHONE_TOKEN?.length || 0;
+        const hasPayphoneStoreId = Boolean(process.env.PAYPHONE_STORE_ID);
+        const payphoneStoreIdLength = process.env.PAYPHONE_STORE_ID?.length || 0;
+
+        console.info("PayPhone diagnostics:", {
+            hasPayphoneToken,
+            payphoneTokenLength,
+            hasPayphoneStoreId,
+            payphoneStoreIdLength
+        });
+
         if (!process.env.PAYPHONE_TOKEN) {
+            console.info("PAYPHONE_TOKEN no configurado");
+            return res.json(manualFallback);
+        }
+
+        if (!process.env.PAYPHONE_STORE_ID) {
+            console.info("PAYPHONE_STORE_ID no configurado");
             return res.json(manualFallback);
         }
 
@@ -1014,9 +1032,13 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             isAmountEditable: false
         };
 
-        if (process.env.PAYPHONE_STORE_ID) {
-            payload.storeId = process.env.PAYPHONE_STORE_ID;
-        }
+        payload.storeId = process.env.PAYPHONE_STORE_ID;
+
+        console.info("PayPhone payload sanitizado:", {
+            ...payload,
+            storeIdLength: String(payload.storeId).length,
+            storeId: "[configured]"
+        });
 
         const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
             method: "POST",
@@ -1028,19 +1050,35 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         });
 
         const contentType = response.headers.get("content-type") || "";
+        console.info("PayPhone response metadata:", {
+            status: response.status,
+            contentType
+        });
+
         const data = contentType.includes("application/json")
             ? await response.json()
             : await response.text();
 
         if (!response.ok) {
-            console.error("PayPhone respondió error:", data);
+            console.error("PayPhone respondió error:", {
+                status: response.status,
+                contentType,
+                responsePreview: typeof data === "string"
+                    ? data.slice(0, 300)
+                    : JSON.stringify(data).slice(0, 300)
+            });
             return res.json(manualFallback);
         }
 
         const paymentUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
 
         if (!paymentUrl) {
-            console.error("PayPhone no devolvió un link válido:", data);
+            console.error("PayPhone no devolvió un link válido:", {
+                contentType,
+                responsePreview: typeof data === "string"
+                    ? data.slice(0, 300)
+                    : JSON.stringify(data).slice(0, 300)
+            });
             return res.json(manualFallback);
         }
 
