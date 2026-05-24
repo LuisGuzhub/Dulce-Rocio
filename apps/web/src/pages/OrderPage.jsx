@@ -92,17 +92,21 @@ function OrderPage() {
     const [loggedUser, setLoggedUser] = useState(null);
     const [deliveryAddress, setDeliveryAddress] = useState('');
     const [deliveryFee, setDeliveryFee] = useState('');
+    const [deliveryType, setDeliveryType] = useState('delivery');
     const [selectedSector, setSelectedSector] = useState('');
     const [selectedBranch, setSelectedBranch] = useState("Sur");
+    const [selectedPickupBranch, setSelectedPickupBranch] = useState('');
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [savedCarts, setSavedCarts] = useState([]);
     const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
+    const autoRestoredCart = useRef(false);
     const [selectedPosition, setSelectedPosition] = useState([
         -2.170998,
         -79.922359
     ]);
 
+    const apiBaseUrl = "https://dulce-rocio.onrender.com";
     const payphonePaymentLink = "https://ppls.me/BIKDskIgJy8yEfY3c4Q9IQ";
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
@@ -119,7 +123,7 @@ function OrderPage() {
     useEffect(() => {
         const loadStock = async () => {
             try {
-                const response = await fetch("https://dulce-rocio.onrender.com/api/products-stock");
+                const response = await fetch(`${apiBaseUrl}/api/products-stock`);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -132,6 +136,12 @@ function OrderPage() {
 
         loadStock();
     }, []);
+
+    useEffect(() => {
+        if (loggedUser?.email) {
+            loadSavedCarts(loggedUser.email);
+        }
+    }, [loggedUser]);
     const deliveryZonesByBranch = {
         "Urb Plaza Madeira": [
             { name: "Plaza Madeira", fee: 2.00 },
@@ -281,6 +291,169 @@ function OrderPage() {
     const formatPrice = (value) => {
         return Number(value).toFixed(2);
     };
+
+    function getSavedCartStorageKey(email) {
+        return `dulce-rocio:saved-carts:${String(email || 'guest').toLowerCase()}`;
+    }
+
+    function readLocalSavedCarts(email) {
+        try {
+            const storedCarts = localStorage.getItem(getSavedCartStorageKey(email));
+            return storedCarts ? JSON.parse(storedCarts) : [];
+        } catch (error) {
+            console.error("Error leyendo pedidos guardados:", error);
+            return [];
+        }
+    }
+
+    function writeLocalSavedCarts(email, carts) {
+        localStorage.setItem(getSavedCartStorageKey(email), JSON.stringify(carts));
+    }
+
+    function normalizeCartItems(items = []) {
+        return items.map((item) => {
+            const product = products.find((productItem) => productItem.id === Number(item.id));
+
+            return {
+                ...(product || {}),
+                ...item,
+                id: Number(item.id),
+                price: Number(item.price || product?.price || 0),
+                quantity: Math.max(1, Number(item.quantity || 1))
+            };
+        });
+    }
+
+    function normalizeSavedCart(rawCart, source = "api") {
+        const cartData = rawCart.cart_data || rawCart.cart || [];
+        let parsedCart = [];
+
+        try {
+            parsedCart = typeof cartData === "string" ? JSON.parse(cartData) : cartData;
+        } catch (error) {
+            console.error("Error leyendo carrito guardado:", error);
+        }
+
+        const deliveryMode = rawCart.delivery_type || rawCart.deliveryType || "delivery";
+
+        return {
+            id: rawCart.id || rawCart.cartId || `local-${Date.now()}`,
+            source,
+            cart: normalizeCartItems(parsedCart),
+            subtotal: Number(rawCart.subtotal || 0),
+            deliveryFee: Number(rawCart.delivery_fee ?? rawCart.deliveryFee ?? 0),
+            total: Number(rawCart.total || 0),
+            deliveryType: deliveryMode,
+            deliveryAddress: rawCart.delivery_address || rawCart.deliveryAddress || "",
+            sector: rawCart.sector || "",
+            pickupBranch: rawCart.pickup_branch || rawCart.pickupBranch || "",
+            branch: rawCart.branch || rawCart.pickup_branch || selectedBranch,
+            latitude: rawCart.latitude || null,
+            longitude: rawCart.longitude || null,
+            savedAt: rawCart.updated_at || rawCart.created_at || rawCart.savedAt || new Date().toISOString()
+        };
+    }
+
+    function createDraftCart() {
+        const effectiveDeliveryFee = deliveryType === "delivery" ? Number(deliveryFee) || 0 : 0;
+
+        return {
+            id: `local-${Date.now()}`,
+            source: "local",
+            cart: normalizeCartItems(cart),
+            subtotal: totalPrice,
+            deliveryFee: effectiveDeliveryFee,
+            total: totalPrice + effectiveDeliveryFee,
+            deliveryType,
+            deliveryAddress: deliveryType === "delivery" ? deliveryAddress : "",
+            sector: deliveryType === "delivery" ? selectedSector : "",
+            pickupBranch: deliveryType === "pickup" ? selectedPickupBranch : "",
+            branch: selectedBranch,
+            latitude: selectedPosition?.[0] || null,
+            longitude: selectedPosition?.[1] || null,
+            savedAt: new Date().toISOString()
+        };
+    }
+
+    async function loadSavedCarts(email) {
+        const token = localStorage.getItem("token");
+        const localCarts = readLocalSavedCarts(email);
+        let apiCarts = [];
+
+        if (token) {
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/cart/me`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    apiCarts = (data.carts || []).map((savedCart) => normalizeSavedCart(savedCart, "api"));
+                }
+            } catch (error) {
+                console.error("Error cargando pedidos guardados:", error);
+            }
+        }
+
+        const mergedCarts = [...apiCarts, ...localCarts.map((savedCart) => normalizeSavedCart(savedCart, "local"))]
+            .sort((firstCart, secondCart) => new Date(secondCart.savedAt) - new Date(firstCart.savedAt));
+
+        setSavedCarts(mergedCarts);
+
+        if (!autoRestoredCart.current && cart.length === 0 && mergedCarts.length > 0) {
+            restoreSavedCart(mergedCarts[0], true);
+            autoRestoredCart.current = true;
+        }
+    }
+
+    function restoreSavedCart(savedCart, silent = false) {
+        const restoredCart = normalizeSavedCart(savedCart, savedCart.source || "local");
+
+        setCart(restoredCart.cart);
+        setDeliveryType(restoredCart.deliveryType);
+        setSelectedBranch(restoredCart.branch || restoredCart.pickupBranch || selectedBranch);
+        setSelectedSector(restoredCart.deliveryType === "delivery" ? restoredCart.sector : "");
+        setDeliveryFee(restoredCart.deliveryType === "delivery" ? restoredCart.deliveryFee : 0);
+        setDeliveryAddress(restoredCart.deliveryType === "delivery" ? restoredCart.deliveryAddress : "");
+        setSelectedPickupBranch(restoredCart.deliveryType === "pickup" ? restoredCart.pickupBranch : "");
+
+        if (restoredCart.latitude && restoredCart.longitude) {
+            setSelectedPosition([Number(restoredCart.latitude), Number(restoredCart.longitude)]);
+        }
+
+        setShowSavedCartPanel(false);
+
+        if (!silent) {
+            alert("Pedido guardado recuperado.");
+        }
+    }
+
+    function validateOrderReadyForPayment() {
+        if (cart.length === 0) {
+            alert('Agrega al menos un postre al carrito.');
+            return false;
+        }
+
+        if (!customerName || !customerEmail) {
+            alert('Tu nombre y correo son necesarios para continuar con el pago.');
+            return false;
+        }
+
+        if (deliveryType === "delivery" && !selectedSector) {
+            alert("Selecciona tu sector antes de continuar con el pago.");
+            return false;
+        }
+
+        if (deliveryType === "pickup" && !selectedPickupBranch) {
+            alert("Selecciona un punto de recogida antes de continuar con el pago.");
+            return false;
+        }
+
+        return true;
+    }
+
     const searchAddress = async () => {
         if (!deliveryAddress.trim()) {
             alert("Escribe una dirección para buscarla en el mapa.");
@@ -326,13 +499,7 @@ function OrderPage() {
         }
     };
     const openPaymentModal = () => {
-        if (cart.length === 0) {
-            alert('Agrega al menos un postre al carrito.');
-            return;
-        }
-
-        if (!customerName || !customerEmail) {
-            alert('Tu nombre y correo son necesarios para continuar con el pago.');
+        if (!validateOrderReadyForPayment()) {
             return;
         }
 
@@ -412,33 +579,41 @@ function OrderPage() {
         }, 0);
     }, [cart]);
     const finalTotal = useMemo(() => {
-        const deliveryValue = Number(deliveryFee) || 0;
+        const deliveryValue = deliveryType === "delivery" ? Number(deliveryFee) || 0 : 0;
         return totalPrice + deliveryValue;
-    }, [totalPrice, deliveryFee]);
+    }, [totalPrice, deliveryFee, deliveryType]);
 
     const whatsappCartMessage = useMemo(() => {
         if (cart.length === 0) {
-            return 'Hola, quiero información sobre sus postres 💕';
+            return 'Hola, quiero informacion sobre sus postres';
         }
 
-        let message = 'Hola, quiero hacer este pedido en Dulce Rocío:\n\n';
+        let message = 'Hola, quiero hacer este pedido en Dulce Rocio:\n\n';
 
         cart.forEach((item) => {
             const subtotal = item.price * item.quantity;
-            message += `• ${item.name} x${item.quantity} - $${formatPrice(subtotal)}\n`;
+            message += `- ${item.name} x${item.quantity} - $${formatPrice(subtotal)}\n`;
         });
 
         message += `\nNombre: ${customerName || 'No especificado'}`;
         message += `\nCorreo: ${customerEmail || 'No especificado'}`;
         message += `\nSucursal elegida: ${selectedBranch}`;
         message += `\nTotal de productos: ${totalItems}`;
-        message += `\nDirección de entrega: ${deliveryAddress || 'No especificada'}`;
-        message += `\nSector: ${selectedSector || 'No especificado'}`;
-        message += `\nCosto de delivery: $${formatPrice(deliveryFee || 0)}`;
-        message += `\nTotal final a pagar: $${formatPrice(finalTotal)} 💕`;
+        message += `\nTipo de entrega: ${deliveryType === "pickup" ? "Recoger en establecimiento" : "Delivery"}`;
+
+        if (deliveryType === "pickup") {
+            message += `\nPunto de recogida: ${selectedPickupBranch || 'No especificado'}`;
+            message += `\nCosto de delivery: $0.00`;
+        } else {
+            message += `\nDireccion de entrega: ${deliveryAddress || 'No especificada'}`;
+            message += `\nSector: ${selectedSector || 'No especificado'}`;
+            message += `\nCosto de delivery: $${formatPrice(deliveryFee || 0)}`;
+        }
+
+        message += `\nTotal final a pagar: $${formatPrice(finalTotal)}`;
 
         return message;
-    }, [cart, totalItems, totalPrice, finalTotal, customerName, customerEmail, deliveryAddress, selectedSector, deliveryFee]);
+    }, [cart, totalItems, finalTotal, customerName, customerEmail, selectedBranch, deliveryType, selectedPickupBranch, deliveryAddress, selectedSector, deliveryFee]);
 
     const guardarPedido = async () => {
         if (cart.length === 0) {
@@ -451,48 +626,49 @@ function OrderPage() {
             return;
         }
 
+        const draftCart = createDraftCart();
+        const token = localStorage.getItem("token");
+
         try {
-            for (const item of cart) {
-                const response = await fetch('https://dulce-rocio.onrender.com/api/orders', {
+            if (token) {
+                const response = await fetch(`${apiBaseUrl}/api/cart/save`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
                     },
                     body: JSON.stringify({
-                        customer_name: customerName,
-                        customer_email: customerEmail,
-
-                        product_name: item.name,
-                        quantity: item.quantity,
-
+                        cart: draftCart.cart,
                         subtotal: totalPrice,
-                        delivery_fee: deliveryFee,
+                        delivery_fee: draftCart.deliveryFee,
                         total: finalTotal,
-
-                        delivery_address: deliveryAddress,
-                        sector: selectedSector,
-
-                        latitude: selectedPosition[0],
-                        longitude: selectedPosition[1],
-
-                        payment_method: "pendiente"
+                        delivery_type: deliveryType,
+                        delivery_address: draftCart.deliveryAddress,
+                        sector: draftCart.sector,
+                        pickup_branch: draftCart.pickupBranch,
+                        latitude: draftCart.latitude,
+                        longitude: draftCart.longitude,
                     })
                 });
 
                 if (!response.ok) {
-                    throw new Error('No se pudo guardar uno de los productos.');
+                    throw new Error('No se pudo guardar en el servidor.');
                 }
+
+                await loadSavedCarts(customerEmail);
+                alert('Pedido guardado correctamente. Puedes retomarlo desde el carrito.');
+                return;
             }
-
-            alert('Pedido guardado correctamente. Ya aparece en el panel del administrador.');
-
-            setCart([]);
-            setCustomerName('');
-            setCustomerEmail('');
         } catch (error) {
             console.error(error);
-            alert('Hubo un error al guardar el pedido.');
         }
+
+        const localCarts = readLocalSavedCarts(customerEmail);
+        const updatedCarts = [draftCart, ...localCarts].slice(0, 5);
+
+        writeLocalSavedCarts(customerEmail, updatedCarts);
+        setSavedCarts(updatedCarts.map((savedCart) => normalizeSavedCart(savedCart, "local")));
+        alert('Pedido guardado localmente. Puedes retomarlo desde este navegador.');
     };
 
     return (
@@ -505,12 +681,146 @@ function OrderPage() {
             >
                 <ShoppingCart size={28} />
 
-                {savedCarts.length > 0 && (
+                {(totalItems > 0 || savedCarts.length > 0) && (
                     <span className="absolute -top-2 -right-2 bg-[#d78963] text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center">
-                        {savedCarts.length}
+                        {totalItems || savedCarts.length}
                     </span>
                 )}
             </button>
+
+            {showSavedCartPanel && (
+                <div className="fixed inset-0 z-[9999] bg-black/50 flex justify-end">
+                    <div className="h-full w-full max-w-xl bg-[#fffaf7] shadow-2xl overflow-y-auto p-6 border-l border-[#eadfd7]">
+                        <div className="flex items-start justify-between gap-4 mb-6">
+                            <div>
+                                <p className="text-sm uppercase tracking-[0.2em] text-[#d78963] font-semibold">
+                                    Carrito
+                                </p>
+                                <h2 className="text-3xl font-bold text-[#2d1d17]" style={{ fontFamily: 'Playfair Display, serif' }}>
+                                    Pedido actual
+                                </h2>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowSavedCartPanel(false)}
+                                className="text-[#6F4E47] hover:text-[#2d1d17]"
+                            >
+                                <X size={28} />
+                            </button>
+                        </div>
+
+                        {cart.length === 0 ? (
+                            <p className="text-[#6b5147] bg-white border border-[#eadfd7] rounded-2xl p-4">
+                                Tu carrito actual esta vacio. Puedes recuperar un pedido guardado abajo.
+                            </p>
+                        ) : (
+                            <div className="space-y-4">
+                                {cart.map((item) => (
+                                    <div key={item.id} className="bg-white border border-[#eadfd7] rounded-2xl p-4">
+                                        <div className="flex justify-between gap-4">
+                                            <div>
+                                                <h3 className="font-bold text-[#2d1d17]">{item.name}</h3>
+                                                <p className="text-sm text-[#6b5147]">
+                                                    {item.quantity} x ${formatPrice(item.price)} = ${formatPrice(item.price * item.quantity)}
+                                                </p>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => decreaseQuantity(item.id)}
+                                                    className="w-8 h-8 rounded-full border border-[#eadfd7] flex items-center justify-center text-[#6F4E47]"
+                                                >
+                                                    <Minus size={14} />
+                                                </button>
+                                                <span className="font-bold min-w-[24px] text-center">{item.quantity}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => increaseQuantity(item.id)}
+                                                    className="w-8 h-8 rounded-full border border-[#eadfd7] flex items-center justify-center text-[#6F4E47]"
+                                                >
+                                                    <Plus size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="bg-[#f7efe9] border border-[#eadfd7] rounded-2xl p-4 space-y-2">
+                                    <p>Subtotal: <strong>${formatPrice(totalPrice)}</strong></p>
+                                    {deliveryType === "delivery" ? (
+                                        <>
+                                            <p>Sector: <strong>{selectedSector || "No seleccionado"}</strong></p>
+                                            <p>Delivery: <strong>${formatPrice(deliveryFee || 0)}</strong></p>
+                                        </>
+                                    ) : (
+                                        <p>Punto de recogida: <strong>{selectedPickupBranch || "No seleccionado"}</strong></p>
+                                    )}
+                                    <p className="text-xl text-[#2d1d17]">Total: <strong>${formatPrice(finalTotal)}</strong></p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSavedCartPanel(false)}
+                                        className="bg-white border border-[#eadfd7] text-[#6F4E47] font-semibold px-5 py-3 rounded-2xl"
+                                    >
+                                        Seguir editando
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={openPaymentModal}
+                                        className="bg-[#2d1d17] text-white font-semibold px-5 py-3 rounded-2xl"
+                                    >
+                                        Pagar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-8">
+                            <h3 className="text-xl font-bold text-[#2d1d17] mb-4">
+                                Pedidos guardados
+                            </h3>
+
+                            {savedCarts.length === 0 ? (
+                                <p className="text-[#6b5147] bg-white border border-[#eadfd7] rounded-2xl p-4">
+                                    Aun no tienes pedidos guardados.
+                                </p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {savedCarts.map((savedCart) => (
+                                        <button
+                                            key={`${savedCart.source}-${savedCart.id}`}
+                                            type="button"
+                                            onClick={() => restoreSavedCart(savedCart)}
+                                            className="w-full text-left bg-white border border-[#eadfd7] hover:bg-[#fff3ed] rounded-2xl p-4 transition"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="font-bold text-[#2d1d17]">
+                                                        {savedCart.cart.length} producto(s)
+                                                    </p>
+                                                    <p className="text-sm text-[#6b5147]">
+                                                        {savedCart.deliveryType === "pickup"
+                                                            ? `Recoger en ${savedCart.pickupBranch || "punto pendiente"}`
+                                                            : `Delivery - ${savedCart.sector || "sector pendiente"}`}
+                                                    </p>
+                                                </div>
+                                                <p className="font-bold text-[#d78963]">
+                                                    ${formatPrice(savedCart.total || savedCart.subtotal || 0)}
+                                                </p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <main className="bg-[#f8f3ef] text-[#3d2a22]">
                 <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
@@ -579,6 +889,7 @@ function OrderPage() {
                                         setSelectedBranch(branch.name);
                                         setSelectedSector("");
                                         setDeliveryFee("");
+                                        setSelectedPickupBranch("");
                                         setCart([]);
                                     }}
                                     className={`px-5 py-3 rounded-2xl border font-semibold transition-all ${selectedBranch === branch.name
@@ -841,71 +1152,130 @@ function OrderPage() {
                                     />
                                 </div>
 
-                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="relative">
-                                        <MapPin
-                                            className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
-                                            size={20}
-                                        />
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDeliveryType("delivery");
+                                            setSelectedPickupBranch("");
+                                        }}
+                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border font-semibold transition ${deliveryType === "delivery"
+                                            ? "bg-[#6F4E47] text-white border-[#6F4E47]"
+                                            : "bg-white text-[#6F4E47] border-[#eadfd7]"
+                                            }`}
+                                    >
+                                        <Truck size={20} />
+                                        Delivery
+                                    </button>
 
-                                        <input
-                                            type="text"
-                                            placeholder="Marca tu ubicación en el mapa"
-                                            value={deliveryAddress}
-                                            readOnly
-                                            className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none bg-[#f7efe9] cursor-not-allowed text-[#4a352d]"
-                                        />
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setDeliveryType("pickup");
+                                            setSelectedSector("");
+                                            setDeliveryFee(0);
+                                            setDeliveryAddress("");
+                                        }}
+                                        className={`flex items-center justify-center gap-3 p-4 rounded-2xl border font-semibold transition ${deliveryType === "pickup"
+                                            ? "bg-[#6F4E47] text-white border-[#6F4E47]"
+                                            : "bg-white text-[#6F4E47] border-[#eadfd7]"
+                                            }`}
+                                    >
+                                        <Building2 size={20} />
+                                        Recoger en establecimiento
+                                    </button>
+                                </div>
 
-                                    <div className="relative">
-                                        <Truck
+                                {deliveryType === "delivery" ? (
+                                    <>
+                                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="relative">
+                                                <MapPin
+                                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
+                                                    size={20}
+                                                />
+
+                                                <input
+                                                    type="text"
+                                                    placeholder="Marca tu ubicacion en el mapa"
+                                                    value={deliveryAddress}
+                                                    readOnly
+                                                    className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none bg-[#f7efe9] cursor-not-allowed text-[#4a352d]"
+                                                />
+                                            </div>
+
+                                            <div className="relative">
+                                                <Truck
+                                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
+                                                    size={20}
+                                                />
+
+                                                <select
+                                                    value={selectedSector}
+                                                    onChange={(event) => {
+                                                        const sectorName = event.target.value;
+                                                        const zone = deliveryZones.find((item) => item.name === sectorName);
+
+                                                        setSelectedSector(sectorName);
+                                                        setDeliveryFee(zone ? zone.fee : '');
+                                                    }}
+                                                    className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white text-[#3d2a22]"
+                                                >
+                                                    <option value="">Selecciona tu sector</option>
+
+                                                    {deliveryZones.map((zone) => (
+                                                        <option key={zone.name} value={zone.name}>
+                                                            {zone.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="mt-5 overflow-hidden rounded-3xl border border-[#eadfd7]">
+                                            <MapContainer
+                                                center={selectedPosition}
+                                                zoom={13}
+                                                style={{
+                                                    height: "320px",
+                                                    width: "100%"
+                                                }}
+                                            >
+                                                <TileLayer
+                                                    attribution='&copy; OpenStreetMap contributors'
+                                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                />
+                                                <MapUpdater selectedPosition={selectedPosition} />
+
+                                                <LocationMarker
+                                                    selectedPosition={selectedPosition}
+                                                    setSelectedPosition={setSelectedPosition}
+                                                    setDeliveryAddress={setDeliveryAddress}
+                                                />
+                                            </MapContainer>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="mt-4 relative">
+                                        <Building2
                                             className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6F4E47]"
                                             size={20}
                                         />
 
                                         <select
-                                            value={selectedSector}
-                                            onChange={(event) => {
-                                                const sectorName = event.target.value;
-                                                const zone = deliveryZones.find((item) => item.name === sectorName);
-
-                                                setSelectedSector(sectorName);
-                                                setDeliveryFee(zone ? zone.fee : '');
-                                            }}
+                                            value={selectedPickupBranch}
+                                            onChange={(event) => setSelectedPickupBranch(event.target.value)}
                                             className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white text-[#3d2a22]"
                                         >
-                                            <option value="">Selecciona tu sector</option>
+                                            <option value="">Selecciona punto de recogida</option>
 
-                                            {deliveryZones.map((zone) => (
-                                                <option key={zone.name} value={zone.name}>
-                                                    {zone.name}
+                                            {branches.map((branch) => (
+                                                <option key={branch.name} value={branch.name}>
+                                                    {branch.name} - {branch.description}
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
-                                </div>
-                                <div className="mt-5 overflow-hidden rounded-3xl border border-[#eadfd7]">
-                                    <MapContainer
-                                        center={selectedPosition}
-                                        zoom={13}
-                                        style={{
-                                            height: "320px",
-                                            width: "100%"
-                                        }}
-                                    >
-                                        <TileLayer
-                                            attribution='&copy; OpenStreetMap contributors'
-                                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                        />
-                                        <MapUpdater selectedPosition={selectedPosition} />
-
-                                        <LocationMarker
-                                            selectedPosition={selectedPosition}
-                                            setSelectedPosition={setSelectedPosition}
-                                            setDeliveryAddress={setDeliveryAddress}
-                                        />
-                                    </MapContainer>
-                                </div>
+                                )}
 
                                 <div className="mt-6 pt-6 border-t border-[#eadfd7] flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                                     <div>
@@ -917,9 +1287,15 @@ function OrderPage() {
                                                 Subtotal productos: ${formatPrice(totalPrice)}
                                             </p>
 
-                                            <p className="text-lg text-[#6F4E47]">
-                                                Delivery: ${formatPrice(deliveryFee || 0)}
-                                            </p>
+                                            {deliveryType === "delivery" ? (
+                                                <p className="text-lg text-[#6F4E47]">
+                                                    Delivery: ${formatPrice(deliveryFee || 0)}
+                                                </p>
+                                            ) : (
+                                                <p className="text-lg text-[#6F4E47]">
+                                                    Recogida: {selectedPickupBranch || "Sin punto seleccionado"}
+                                                </p>
+                                            )}
 
                                             <p className="text-3xl font-bold text-[#2d1d17]">
                                                 Total final: ${formatPrice(finalTotal)}

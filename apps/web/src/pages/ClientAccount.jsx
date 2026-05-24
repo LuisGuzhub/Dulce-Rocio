@@ -157,7 +157,7 @@ export default function ClientAccount() {
                                 </h3>
 
                                 <p className="text-sm text-[#7a5a4c] mb-4">
-                                    Compra 8 postres y recibe 1 postre gratis.
+                                    Por comprar 8 veces, recibes uno gratis.
                                 </p>
 
                                 <div className="grid grid-cols-4 gap-2 mb-4">
@@ -178,8 +178,9 @@ export default function ClientAccount() {
                                     })}
                                 </div>
 
+                                {/* TODO backend: contar compras confirmadas, no cantidad de postres. */}
                                 <p className="text-sm text-[#3b241b] font-semibold">
-                                    Progreso: {Number(loyalty?.purchased_items || 0)} / 8 postres
+                                    Progreso: {Number(loyalty?.purchased_items || 0)} / 8 compras
                                 </p>
 
                                 <p className="text-sm text-[#7a5a4c] mt-1">
