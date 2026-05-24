@@ -971,8 +971,26 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         }
 
         if (!process.env.PAYPHONE_TOKEN) {
-            return res.status(501).json({
-                message: "PayPhone no está configurado. Falta PAYPHONE_TOKEN en el backend."
+            return res.json({
+                mode: "manual",
+                message: "Pago automático próximamente disponible.",
+                amount: Math.round(totalValue * 100),
+                summary: {
+                    subtotal: subtotalValue,
+                    deliveryFee: deliveryFeeValue,
+                    total: totalValue,
+                    deliveryType: delivery_type,
+                    sector: delivery_type === "delivery" ? sector : null,
+                    pickupBranch: delivery_type === "pickup" ? pickup_branch : null,
+                    products: cart
+                        .map((item) => `${item.name} x${item.quantity}`)
+                        .join(", ")
+                        .slice(0, 180),
+                    paymentMethods: [
+                        "Transferencia bancaria",
+                        "Confirmación por WhatsApp"
+                    ]
+                }
             });
         }
 

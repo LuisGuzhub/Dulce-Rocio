@@ -99,6 +99,7 @@ function OrderPage() {
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [isCreatingPayphoneLink, setIsCreatingPayphoneLink] = useState(false);
+    const [manualPaymentFallback, setManualPaymentFallback] = useState(null);
     const [savedCarts, setSavedCarts] = useState([]);
     const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
     const autoRestoredCart = useRef(false);
@@ -503,6 +504,7 @@ function OrderPage() {
             return;
         }
 
+        setManualPaymentFallback(null);
         setShowPaymentModal(true);
     };
 
@@ -547,6 +549,11 @@ function OrderPage() {
 
             if (!response.ok) {
                 throw new Error(data.message || "No se pudo generar el link de PayPhone.");
+            }
+
+            if (data.mode === "manual") {
+                setManualPaymentFallback(data);
+                return;
             }
 
             window.open(data.paymentUrl, "_blank", "noopener,noreferrer");
@@ -651,6 +658,7 @@ function OrderPage() {
         message += `\nCorreo: ${customerEmail || 'No especificado'}`;
         message += `\nSucursal elegida: ${selectedBranch}`;
         message += `\nTotal de productos: ${totalItems}`;
+        message += `\nSubtotal: $${formatPrice(totalPrice)}`;
         message += `\nTipo de entrega: ${deliveryType === "pickup" ? "Recoger en establecimiento" : "Delivery"}`;
 
         if (deliveryType === "pickup") {
@@ -663,9 +671,10 @@ function OrderPage() {
         }
 
         message += `\nTotal final a pagar: $${formatPrice(finalTotal)}`;
+        message += `\n\nMetodos de pago disponibles: transferencia bancaria y confirmacion por WhatsApp.`;
 
         return message;
-    }, [cart, totalItems, finalTotal, customerName, customerEmail, selectedBranch, deliveryType, selectedPickupBranch, deliveryAddress, selectedSector, deliveryFee]);
+    }, [cart, totalItems, totalPrice, finalTotal, customerName, customerEmail, selectedBranch, deliveryType, selectedPickupBranch, deliveryAddress, selectedSector, deliveryFee]);
 
     const guardarPedido = async () => {
         if (cart.length === 0) {
@@ -1455,7 +1464,10 @@ function OrderPage() {
                     <div className="relative bg-[#fffaf7] w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-[28px] shadow-2xl border border-[#eadfd7] p-6 md:p-8">
                         <button
                             type="button"
-                            onClick={() => setShowPaymentModal(false)}
+                            onClick={() => {
+                                setShowPaymentModal(false);
+                                setManualPaymentFallback(null);
+                            }}
                             className="absolute top-5 right-5 text-[#6F4E47] hover:text-[#2d1d17]"
                         >
                             <X size={26} />
@@ -1546,6 +1558,38 @@ function OrderPage() {
                                     <ExternalLink size={20} />
                                     {isCreatingPayphoneLink ? "Generando link..." : "Pagar monto exacto"}
                                 </button>
+
+                                {manualPaymentFallback && (
+                                    <div className="mt-5 rounded-2xl border border-[#eadfd7] bg-[#fcf7f3] p-4 text-[#4a352d]">
+                                        <p className="font-bold text-[#2d1d17] mb-2">
+                                            Pago automático próximamente disponible.
+                                        </p>
+                                        <p className="text-sm leading-6 mb-4">
+                                            Mientras habilitamos PayPhone, puedes confirmar tu pedido por WhatsApp con el total exacto calculado desde el carrito.
+                                        </p>
+
+                                        <div className="space-y-2 text-sm">
+                                            <p>Subtotal: <strong>${formatPrice(totalPrice)}</strong></p>
+                                            {deliveryType === "pickup" ? (
+                                                <p>Recogida: <strong>{selectedPickupBranch}</strong></p>
+                                            ) : (
+                                                <p>Delivery: <strong>${formatPrice(deliveryFee || 0)} - {selectedSector}</strong></p>
+                                            )}
+                                            <p>Total exacto: <strong>${formatPrice(finalTotal)}</strong></p>
+                                            <p>Métodos disponibles: <strong>transferencia bancaria y confirmación por WhatsApp.</strong></p>
+                                        </div>
+
+                                        <a
+                                            href={generateWhatsAppLink(`${whatsappCartMessage}\n\nPago automático próximamente disponible. Quiero confirmar este pedido con el total exacto indicado.`)}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="mt-4 inline-flex w-full items-center justify-center gap-3 bg-[#6F4E47] hover:bg-[#4F3124] text-white font-semibold px-5 py-3 rounded-2xl transition-all duration-300"
+                                        >
+                                            <MessageCircle size={20} />
+                                            Enviar pedido por WhatsApp
+                                        </a>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
