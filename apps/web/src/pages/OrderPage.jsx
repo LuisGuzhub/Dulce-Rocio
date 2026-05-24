@@ -99,7 +99,6 @@ function OrderPage() {
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [isCreatingPayphoneLink, setIsCreatingPayphoneLink] = useState(false);
-    const [manualPaymentFallback, setManualPaymentFallback] = useState(null);
     const [savedCarts, setSavedCarts] = useState([]);
     const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
     const autoRestoredCart = useRef(false);
@@ -504,7 +503,6 @@ function OrderPage() {
             return;
         }
 
-        setManualPaymentFallback(null);
         setShowPaymentModal(true);
     };
 
@@ -552,14 +550,14 @@ function OrderPage() {
             }
 
             if (data.mode === "manual") {
-                setManualPaymentFallback(data);
+                alert("No pudimos generar el link de PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
                 return;
             }
 
             window.open(data.paymentUrl, "_blank", "noopener,noreferrer");
         } catch (error) {
             console.error("Error generando pago PayPhone:", error);
-            alert(error.message || "No se pudo generar el link de PayPhone.");
+            alert("No pudimos generar el link de PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
         } finally {
             setIsCreatingPayphoneLink(false);
         }
@@ -1466,7 +1464,6 @@ function OrderPage() {
                             type="button"
                             onClick={() => {
                                 setShowPaymentModal(false);
-                                setManualPaymentFallback(null);
                             }}
                             className="absolute top-5 right-5 text-[#6F4E47] hover:text-[#2d1d17]"
                         >
@@ -1558,38 +1555,6 @@ function OrderPage() {
                                     <ExternalLink size={20} />
                                     {isCreatingPayphoneLink ? "Generando link..." : "Pagar monto exacto"}
                                 </button>
-
-                                {manualPaymentFallback && (
-                                    <div className="mt-5 rounded-2xl border border-[#eadfd7] bg-[#fcf7f3] p-4 text-[#4a352d]">
-                                        <p className="font-bold text-[#2d1d17] mb-2">
-                                            Pago automático próximamente disponible.
-                                        </p>
-                                        <p className="text-sm leading-6 mb-4">
-                                            Mientras habilitamos PayPhone, puedes confirmar tu pedido por WhatsApp con el total exacto calculado desde el carrito.
-                                        </p>
-
-                                        <div className="space-y-2 text-sm">
-                                            <p>Subtotal: <strong>${formatPrice(totalPrice)}</strong></p>
-                                            {deliveryType === "pickup" ? (
-                                                <p>Recogida: <strong>{selectedPickupBranch}</strong></p>
-                                            ) : (
-                                                <p>Delivery: <strong>${formatPrice(deliveryFee || 0)} - {selectedSector}</strong></p>
-                                            )}
-                                            <p>Total exacto: <strong>${formatPrice(finalTotal)}</strong></p>
-                                            <p>Métodos disponibles: <strong>transferencia bancaria y confirmación por WhatsApp.</strong></p>
-                                        </div>
-
-                                        <a
-                                            href={generateWhatsAppLink(`${whatsappCartMessage}\n\nPago automático próximamente disponible. Quiero confirmar este pedido con el total exacto indicado.`)}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="mt-4 inline-flex w-full items-center justify-center gap-3 bg-[#6F4E47] hover:bg-[#4F3124] text-white font-semibold px-5 py-3 rounded-2xl transition-all duration-300"
-                                        >
-                                            <MessageCircle size={20} />
-                                            Enviar pedido por WhatsApp
-                                        </a>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     </div>
