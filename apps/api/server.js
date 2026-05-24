@@ -82,6 +82,41 @@ async function crearTablas() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `);
+        await pool.query(`
+    CREATE TABLE IF NOT EXISTS loyalty_points (
+        id SERIAL PRIMARY KEY,
+        user_email TEXT UNIQUE NOT NULL,
+        purchased_items INTEGER DEFAULT 0,
+        free_items_available INTEGER DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+        await pool.query(`
+    CREATE TABLE IF NOT EXISTS saved_carts (
+        id SERIAL PRIMARY KEY,
+        user_email TEXT NOT NULL,
+        cart_data JSONB NOT NULL,
+        subtotal NUMERIC DEFAULT 0,
+        delivery_fee NUMERIC DEFAULT 0,
+        total NUMERIC DEFAULT 0,
+        delivery_type TEXT DEFAULT 'delivery',
+        delivery_address TEXT,
+        sector TEXT,
+        pickup_branch TEXT,
+        latitude TEXT,
+        longitude TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+`);
+
+        await pool.query(`
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS delivery_type TEXT DEFAULT 'delivery',
+    ADD COLUMN IF NOT EXISTS pickup_branch TEXT;
+`);
+
 
         console.log("✅ Tablas PostgreSQL listas");
     } catch (error) {
@@ -634,7 +669,9 @@ app.post("/api/orders", async (req, res) => {
             latitude,
             longitude,
 
-            payment_method
+            payment_method,
+            delivery_type,
+            pickup_branch
         } = req.body;
 
         if (!customer_name || !customer_email || !product_name || !quantity || !total) {
@@ -643,33 +680,35 @@ app.post("/api/orders", async (req, res) => {
 
         const result = await pool.query(
             `
-            INSERT INTO orders (
-                customer_name,
-                customer_email,
-                product_name,
-                quantity,
+    INSERT INTO orders (
+        customer_name,
+        customer_email,
+        product_name,
+        quantity,
 
-                subtotal,
-                delivery_fee,
-                total,
+        subtotal,
+        delivery_fee,
+        total,
 
-                delivery_address,
-                sector,
+        delivery_address,
+        sector,
 
-                latitude,
-                longitude,
+        latitude,
+        longitude,
 
-                payment_method
-            )
-            VALUES (
-                $1, $2, $3, $4,
-                $5, $6, $7,
-                $8, $9,
-                $10, $11,
-                $12
-            )
-            RETURNING id
-            `,
+        payment_method,
+        delivery_type,
+        pickup_branch
+    )
+    VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7,
+        $8, $9,
+        $10, $11,
+        $12, $13, $14
+    )
+    RETURNING id
+    `,
             [
                 customer_name,
                 customer_email,
@@ -686,7 +725,9 @@ app.post("/api/orders", async (req, res) => {
                 latitude,
                 longitude,
 
-                payment_method
+                payment_method,
+                delivery_type || "delivery",
+                pickup_branch || null
             ]
         );
 
@@ -694,7 +735,7 @@ app.post("/api/orders", async (req, res) => {
         // SISTEMA DE FIDELIDAD
         // =========================
 
-        const totalPurchased = Number(quantity || 0);
+        const totalPurchased = 1;
 
         // buscar si ya existe registro
         const loyaltyResult = await pool.query(
@@ -780,7 +821,131 @@ app.post("/api/orders", async (req, res) => {
 // =========================
 // STOCK DE PRODUCTOS
 // =========================
+// =========================
+// CARRITO GUARDADO
+// =========================
 
+app.post("/api/cart/save", verificarToken, async (req, res) => {
+    try {
+        const {
+            cart,
+            subtotal,
+            delivery_fee,
+            total,
+            delivery_type,
+            delivery_address,
+            sector,
+            pickup_branch,
+            latitude,
+            longitude
+        } = req.body;
+
+        if (!cart || cart.length === 0) {
+            return res.status(400).json({
+                message: "El carrito está vacío"
+            });
+        }
+
+        if (delivery_type === "delivery" && !sector) {
+            return res.status(400).json({
+                message: "Debes seleccionar un sector"
+            });
+        }
+
+        if (delivery_type === "pickup" && !pickup_branch) {
+            return res.status(400).json({
+                message: "Debes seleccionar un punto de recogida"
+            });
+        }
+
+        const result = await pool.query(
+            `
+            INSERT INTO saved_carts (
+                user_email,
+                cart_data,
+                subtotal,
+                delivery_fee,
+                total,
+                delivery_type,
+                delivery_address,
+                sector,
+                pickup_branch,
+                latitude,
+                longitude
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            RETURNING id
+            `,
+            [
+                req.user.email,
+                JSON.stringify(cart),
+                subtotal,
+                delivery_fee,
+                total,
+                delivery_type,
+                delivery_address || null,
+                sector || null,
+                pickup_branch || null,
+                latitude || null,
+                longitude || null
+            ]
+        );
+
+        res.json({
+            message: "Carrito guardado correctamente",
+            cartId: result.rows[0].id
+        });
+    } catch (error) {
+        console.error("Error guardando carrito:", error.message);
+        res.status(500).json({
+            message: "Error guardando carrito"
+        });
+    }
+});
+
+app.get("/api/cart/me", verificarToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT *
+            FROM saved_carts
+            WHERE user_email = $1
+            ORDER BY created_at DESC
+            `,
+            [req.user.email]
+        );
+
+        res.json({
+            carts: result.rows
+        });
+    } catch (error) {
+        console.error("Error obteniendo carritos:", error.message);
+        res.status(500).json({
+            message: "Error obteniendo carritos"
+        });
+    }
+});
+
+app.delete("/api/cart/:id", verificarToken, async (req, res) => {
+    try {
+        await pool.query(
+            `
+            DELETE FROM saved_carts
+            WHERE id = $1 AND user_email = $2
+            `,
+            [req.params.id, req.user.email]
+        );
+
+        res.json({
+            message: "Carrito eliminado correctamente"
+        });
+    } catch (error) {
+        console.error("Error eliminando carrito:", error.message);
+        res.status(500).json({
+            message: "Error eliminando carrito"
+        });
+    }
+});
 // OBTENER STOCK
 app.get("/api/products-stock", async (req, res) => {
     try {
