@@ -96,6 +96,8 @@ function OrderPage() {
     const [selectedBranch, setSelectedBranch] = useState("Sur");
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [savedCarts, setSavedCarts] = useState([]);
+    const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
     const [selectedPosition, setSelectedPosition] = useState([
         -2.170998,
         -79.922359
@@ -496,6 +498,19 @@ function OrderPage() {
     return (
         <>
             <Header />
+            <button
+                type="button"
+                onClick={() => setShowSavedCartPanel(true)}
+                className="fixed bottom-6 right-6 z-[9998] bg-[#3b241b] text-white w-16 h-16 rounded-full shadow-xl flex items-center justify-center"
+            >
+                <ShoppingCart size={28} />
+
+                {savedCarts.length > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-[#d78963] text-white text-xs font-bold w-7 h-7 rounded-full flex items-center justify-center">
+                        {savedCarts.length}
+                    </span>
+                )}
+            </button>
 
             <main className="bg-[#f8f3ef] text-[#3d2a22]">
                 <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-10">
