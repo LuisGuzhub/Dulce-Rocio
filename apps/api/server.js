@@ -1030,18 +1030,14 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             currency: "USD",
             reference: `Dulce Rocío ${clientTransactionId}`,
             clientTransactionId,
-            additionalData: productSummary,
-            oneTime: true,
-            expireIn: 1,
             isAmountEditable: false
         };
 
-        payload.storeId = process.env.PAYPHONE_STORE_ID;
-
         console.info("PayPhone payload sanitizado:", {
             ...payload,
-            storeIdLength: String(payload.storeId).length,
-            storeId: "[configured]"
+            payloadVariant: "minimal-links-without-storeId",
+            storeIdConfiguredButOmittedForDiagnostics: true,
+            storeIdLength: payphoneStoreIdLength
         });
 
         const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
