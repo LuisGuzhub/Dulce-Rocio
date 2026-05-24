@@ -1023,20 +1023,17 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         const payload = {
             amount: amountInCents,
             amountWithoutTax: amountInCents,
-            amountWithTax: 0,
-            tax: 0,
-            service: 0,
-            tip: 0,
             currency: "USD",
-            reference: `Dulce Rocío ${clientTransactionId}`,
+            storeId: process.env.PAYPHONE_STORE_ID,
+            reference: `Dulce Rocio ${clientTransactionId}`,
             clientTransactionId,
             isAmountEditable: false
         };
 
         console.info("PayPhone payload sanitizado:", {
             ...payload,
-            payloadVariant: "minimal-links-without-storeId",
-            storeIdConfiguredButOmittedForDiagnostics: true,
+            payloadVariant: "official-minimal-without-tax",
+            storeId: "[configured]",
             storeIdLength: payphoneStoreIdLength
         });
 
@@ -1044,7 +1041,8 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                Accept: "application/json"
             },
             body: JSON.stringify(payload)
         });
