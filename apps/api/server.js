@@ -1096,6 +1096,74 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         res.status(500).json({ message: "Error generando link PayPhone" });
     }
 });
+
+app.get("/api/payphone/health", async (req, res) => {
+    const hasToken = Boolean(process.env.PAYPHONE_TOKEN);
+    const tokenLength = process.env.PAYPHONE_TOKEN?.length || 0;
+    const hasStoreId = Boolean(process.env.PAYPHONE_STORE_ID);
+    const storeIdLength = process.env.PAYPHONE_STORE_ID?.length || 0;
+
+    try {
+        const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
+            method: "GET",
+            headers: hasToken
+                ? { Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}` }
+                : {}
+        });
+
+        const contentType = response.headers.get("content-type") || "";
+        const rawBody = await response.text();
+        const responseKind = contentType.includes("application/json")
+            ? "json"
+            : rawBody.trim().startsWith("<")
+                ? "html"
+                : "text";
+        const summary = rawBody.replace(/\s+/g, " ").trim().slice(0, 300);
+
+        console.info("PayPhone health diagnostics:", {
+            hasToken,
+            tokenLength,
+            hasStoreId,
+            storeIdLength,
+            status: response.status,
+            contentType,
+            responseKind,
+            summary
+        });
+
+        res.json({
+            hasToken,
+            tokenLength,
+            hasStoreId,
+            storeIdLength,
+            status: response.status,
+            contentType,
+            responseKind,
+            summary
+        });
+    } catch (error) {
+        const summary = error.message.slice(0, 300);
+
+        console.error("PayPhone health diagnostic error:", {
+            hasToken,
+            tokenLength,
+            hasStoreId,
+            storeIdLength,
+            summary
+        });
+
+        res.json({
+            hasToken,
+            tokenLength,
+            hasStoreId,
+            storeIdLength,
+            status: null,
+            contentType: null,
+            responseKind: "error",
+            summary
+        });
+    }
+});
 // =========================
 // STOCK DE PRODUCTOS
 // =========================
