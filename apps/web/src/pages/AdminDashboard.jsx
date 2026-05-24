@@ -125,8 +125,19 @@ export default function AdminDashboard() {
         window.location.href = "/";
     };
 
+    const adminSections = [
+        { name: "Dashboard", value: "dashboard" },
+        { name: "Pedidos", value: "orders" },
+        { name: "Clientes", value: "clients" },
+        { name: "Fidelidad", value: "loyalty" },
+        { name: "Productos", value: "products" },
+        { name: "Mensajes / Solicitudes", value: "requests" },
+        { name: "Reseñas", value: "reviews" },
+    ];
+
     const menuItem = (name, value) => (
         <button
+            type="button"
             onClick={() => setSection(value)}
             className={`block w-full text-left transition ${section === value
                 ? "font-semibold text-[#d78963]"
@@ -148,11 +159,11 @@ export default function AdminDashboard() {
     }
 
     const cards = [
-        { title: "Pedidos", value: orders.length, icon: ShoppingBag },
-        { title: "Clientes", value: users.length, icon: Users },
-        { title: "Productos", value: "0", icon: Package },
-        { title: "Solicitudes", value: contactRequests.length, icon: MessageSquare },
-        { title: "Reseñas", value: reviews.length, icon: Star },
+        { title: "Pedidos", value: orders.length, icon: ShoppingBag, section: "orders" },
+        { title: "Clientes", value: users.length, icon: Users, section: "clients" },
+        { title: "Productos", value: "0", icon: Package, section: "products" },
+        { title: "Solicitudes", value: contactRequests.length, icon: MessageSquare, section: "requests" },
+        { title: "Reseñas", value: reviews.length, icon: Star, section: "reviews" },
     ];
 
     return (
@@ -163,13 +174,11 @@ export default function AdminDashboard() {
                 </h1>
 
                 <nav className="space-y-4">
-                    {menuItem("Dashboard", "dashboard")}
-                    {menuItem("Pedidos", "orders")}
-                    {menuItem("Clientes", "clients")}
-                    {menuItem("Fidelidad", "loyalty")}
-                    {menuItem("Productos", "products")}
-                    {menuItem("Mensajes / Solicitudes", "requests")}
-                    {menuItem("Reseñas", "reviews")}
+                    {adminSections.map((item) => (
+                        <div key={item.value}>
+                            {menuItem(item.name, item.value)}
+                        </div>
+                    ))}
                 </nav>
 
                 <button
@@ -181,7 +190,48 @@ export default function AdminDashboard() {
                 </button>
             </aside>
 
-            <main className="md:ml-64 p-6 md:p-10">
+            <main className="md:ml-64 p-6 pb-28 md:p-10">
+                <div className="md:hidden sticky top-0 z-30 -mx-6 mb-6 border-b border-[#eadfd7] bg-[#f7efe9]/95 px-4 py-4 backdrop-blur">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <p className="text-xs uppercase tracking-[0.18em] text-[#d78963] font-bold">
+                                Menú admin
+                            </p>
+                            <p className="text-lg font-bold text-[#3b241b]">
+                                Dulce Rocío
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={cerrarSesion}
+                            className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-white px-4 py-2 text-sm font-semibold text-red-500 shadow-sm"
+                        >
+                            <LogOut size={16} />
+                            Salir
+                        </button>
+                    </div>
+
+                    <nav
+                        aria-label="Navegación móvil del panel administrativo"
+                        className="flex gap-2 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    >
+                        {adminSections.map((item) => (
+                            <button
+                                key={item.value}
+                                type="button"
+                                onClick={() => setSection(item.value)}
+                                className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${section === item.value
+                                    ? "bg-[#6F4E47] text-white border-[#6F4E47] shadow-md"
+                                    : "bg-white text-[#6F4E47] border-[#eadfd7]"
+                                    }`}
+                            >
+                                {item.name}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
                     <div>
                         <p className="text-sm text-gray-500">Panel administrativo</p>
@@ -190,6 +240,7 @@ export default function AdminDashboard() {
                             {section === "dashboard" && "Bienvenido, Admin"}
                             {section === "orders" && "Gestión de pedidos"}
                             {section === "clients" && "Clientes registrados"}
+                            {section === "loyalty" && "Fidelidad de clientes"}
                             {section === "requests" && "Mensajes / Solicitudes"}
                             {section === "products" && "Gestión de productos"}
                             {section === "reviews" && "Reseñas de clientes"}
@@ -209,14 +260,16 @@ export default function AdminDashboard() {
 
                 {section === "dashboard" && (
                     <>
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-10">
                             {cards.map((card) => {
                                 const Icon = card.icon;
 
                                 return (
-                                    <div
+                                    <button
                                         key={card.title}
-                                        className="bg-white rounded-2xl p-6 shadow-sm"
+                                        type="button"
+                                        onClick={() => setSection(card.section)}
+                                        className="bg-white rounded-2xl p-6 shadow-sm text-left transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#d78963]/40"
                                     >
                                         <div className="flex justify-between items-center mb-4">
                                             <p className="text-gray-500">{card.title}</p>
@@ -226,7 +279,7 @@ export default function AdminDashboard() {
                                         <h3 className="text-3xl font-bold text-[#3b241b]">
                                             {card.value}
                                         </h3>
-                                    </div>
+                                    </button>
                                 );
                             })}
                         </div>
