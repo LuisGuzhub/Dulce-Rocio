@@ -1002,12 +1002,14 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         const payphoneTokenLength = process.env.PAYPHONE_TOKEN?.length || 0;
         const hasPayphoneStoreId = Boolean(process.env.PAYPHONE_STORE_ID);
         const payphoneStoreIdLength = process.env.PAYPHONE_STORE_ID?.length || 0;
+        const storeIdOmitted = process.env.PAYPHONE_OMIT_STORE_ID === "true";
 
         console.info("PayPhone diagnostics:", {
             hasPayphoneToken,
             payphoneTokenLength,
             hasPayphoneStoreId,
-            payphoneStoreIdLength
+            payphoneStoreIdLength,
+            storeIdOmitted
         });
 
         if (!process.env.PAYPHONE_TOKEN) {
@@ -1024,17 +1026,21 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             amount: amountInCents,
             amountWithoutTax: amountInCents,
             currency: "USD",
-            storeId: process.env.PAYPHONE_STORE_ID,
             reference: `Dulce Rocio ${clientTransactionId}`,
             clientTransactionId,
             isAmountEditable: false
         };
 
+        if (!storeIdOmitted) {
+            payload.storeId = process.env.PAYPHONE_STORE_ID;
+        }
+
         console.info("PayPhone payload sanitizado:", {
             ...payload,
             payloadVariant: "official-minimal-without-tax",
-            storeId: "[configured]",
-            storeIdLength: payphoneStoreIdLength
+            storeId: storeIdOmitted ? "[omitted]" : "[configured]",
+            storeIdLength: payphoneStoreIdLength,
+            storeIdOmitted
         });
 
         const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
