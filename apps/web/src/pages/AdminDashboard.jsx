@@ -284,12 +284,16 @@ export default function AdminDashboard() {
                             })}
                         </div>
 
-                        <OrdersTable orders={orders.slice(0, 5)} title="Pedidos recientes" />
+                        <OrdersTable
+                            orders={orders.slice(0, 5)}
+                            title="Pedidos recientes"
+                            setOrders={setOrders}
+                        />
                     </>
                 )}
 
                 {section === "orders" && (
-                    <OrdersTable orders={orders} title="Todos los pedidos" />
+                    <OrdersTable orders={orders} title="Todos los pedidos" setOrders={setOrders} />
                 )}
 
                 {section === "clients" && (
@@ -357,12 +361,65 @@ export default function AdminDashboard() {
     );
 }
 
-function OrdersTable({ orders, title }) {
+function OrdersTable({ orders, title, setOrders }) {
+    const statusOptions = [
+        { value: "pendiente", label: "Pendiente" },
+        { value: "awaiting_payment_confirmation", label: "Pendiente de confirmación de pago" },
+        { value: "paid", label: "Pagado" },
+        { value: "confirmed", label: "Confirmado" },
+        { value: "cancelled", label: "Cancelado" }
+    ];
+
+    const formatPaymentMethod = (method) => {
+        if (method === "payphone_manual") {
+            return "PayPhone manual";
+        }
+
+        return method || "pendiente";
+    };
+
+    const formatStatus = (status) => {
+        const option = statusOptions.find((item) => item.value === status);
+        return option?.label || status || "Pendiente";
+    };
+
+    const updateOrderStatus = async (orderId, status) => {
+        const token = localStorage.getItem("token");
+
+        try {
+            const response = await fetch(`https://dulce-rocio.onrender.com/api/admin/orders/${orderId}/status`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ status }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "No se pudo actualizar el pedido.");
+            }
+
+            setOrders?.((currentOrders) =>
+                currentOrders.map((order) =>
+                    order.id === orderId
+                        ? { ...order, status }
+                        : order
+                )
+            );
+        } catch (error) {
+            console.error(error);
+            alert(error.message || "No se pudo actualizar el estado del pedido.");
+        }
+    };
+
     return (
         <section className="bg-white rounded-2xl p-6 shadow-sm overflow-x-auto">
             <h3 className="text-xl font-bold mb-4 text-[#3b241b]">{title}</h3>
 
-            <table className="w-full text-left min-w-[700px]">
+            <table className="w-full text-left min-w-[1180px]">
                 <thead className="bg-[#f7efe9]">
                     <tr>
                         <th className="p-4">Cliente</th>
@@ -370,6 +427,7 @@ function OrdersTable({ orders, title }) {
                         <th className="p-4">Dirección</th>
                         <th className="p-4">Sector</th>
                         <th className="p-4">Pago</th>
+                        <th className="p-4">Link pago</th>
                         <th className="p-4">Subtotal</th>
                         <th className="p-4">Delivery</th>
                         <th className="p-4">Total</th>
@@ -381,7 +439,7 @@ function OrdersTable({ orders, title }) {
                 <tbody>
                     {orders.length === 0 ? (
                         <tr>
-                            <td className="p-4 text-gray-500" colSpan="5">
+                            <td className="p-4 text-gray-500" colSpan="11">
                                 Todavía no hay pedidos registrados.
                             </td>
                         </tr>
@@ -416,8 +474,23 @@ function OrdersTable({ orders, title }) {
 
                                 <td className="p-4">
                                     <span className="bg-[#f7efe9] px-3 py-1 rounded-full text-sm">
-                                        {order.payment_method || "pendiente"}
+                                        {formatPaymentMethod(order.payment_method)}
                                     </span>
+                                </td>
+
+                                <td className="p-4">
+                                    {order.payment_url ? (
+                                        <a
+                                            href={order.payment_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[#6F4E47] font-semibold underline"
+                                        >
+                                            Abrir PayPhone
+                                        </a>
+                                    ) : (
+                                        <span className="text-gray-500">No registrado</span>
+                                    )}
                                 </td>
 
                                 <td className="p-4 font-semibold">
@@ -449,8 +522,22 @@ function OrdersTable({ orders, title }) {
                                     }
                                 </td>
 
-                                <td className="p-4">
-                                    {order.status}
+                                <td className="p-4 min-w-[230px]">
+                                    {setOrders ? (
+                                        <select
+                                            value={order.status || "pendiente"}
+                                            onChange={(event) => updateOrderStatus(order.id, event.target.value)}
+                                            className="w-full rounded-xl border border-[#eadfd7] bg-white px-3 py-2 text-sm font-semibold text-[#3b241b] outline-none focus:border-[#d78963]"
+                                        >
+                                            {statusOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        formatStatus(order.status)
+                                    )}
                                 </td>
                             </tr>
                         ))

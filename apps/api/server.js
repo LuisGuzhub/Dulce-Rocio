@@ -64,6 +64,7 @@ async function crearTablas() {
                 longitude TEXT,
 
                 payment_method TEXT DEFAULT 'pendiente',
+                payment_url TEXT,
 
                 status TEXT DEFAULT 'pendiente',
 
@@ -129,7 +130,8 @@ async function crearTablas() {
         await pool.query(`
     ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS delivery_type TEXT DEFAULT 'delivery',
-    ADD COLUMN IF NOT EXISTS pickup_branch TEXT;
+    ADD COLUMN IF NOT EXISTS pickup_branch TEXT,
+    ADD COLUMN IF NOT EXISTS payment_url TEXT;
 `);
 
 
@@ -596,6 +598,44 @@ app.get("/api/admin/orders", verificarToken, async (req, res) => {
     }
 });
 
+app.patch("/api/admin/orders/:id/status", verificarToken, async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Acceso denegado" });
+        }
+
+        const allowedStatuses = [
+            "pendiente",
+            "awaiting_payment_confirmation",
+            "paid",
+            "confirmed",
+            "cancelled"
+        ];
+        const { status } = req.body;
+
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({ message: "Estado inválido" });
+        }
+
+        const result = await pool.query(
+            "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
+            [status, req.params.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Pedido no encontrado" });
+        }
+
+        res.json({
+            message: "Estado actualizado",
+            order: result.rows[0]
+        });
+    } catch (error) {
+        console.error("Error actualizando estado del pedido:", error.message);
+        res.status(500).json({ message: "Error actualizando pedido" });
+    }
+});
+
 app.get("/api/admin/users", verificarToken, async (req, res) => {
     try {
         if (req.user.role !== "admin") {
@@ -915,9 +955,77 @@ app.post("/api/orders", async (req, res) => {
     }
 });
 
-app.post("/api/payphone/link", verificarToken, async (req, res) => {
-    let manualFallback = null;
+function validateManualPayphoneOrder({
+    cart,
+    subtotal,
+    delivery_fee,
+    total,
+    delivery_type,
+    sector,
+    pickup_branch
+}) {
+    if (!cart || cart.length === 0) {
+        return "El carrito está vacío";
+    }
 
+    if (!["delivery", "pickup"].includes(delivery_type)) {
+        return "Tipo de entrega inválido";
+    }
+
+    const subtotalValue = Number(subtotal);
+    const cartSubtotal = Number(cart.reduce((sum, item) => {
+        const quantity = Number(item.quantity);
+        const price = Number(item.price);
+
+        if (!Number.isFinite(quantity) || !Number.isFinite(price) || quantity <= 0 || price < 0) {
+            return Number.NaN;
+        }
+
+        return sum + (price * quantity);
+    }, 0).toFixed(2));
+    const deliveryFeeValue = delivery_type === "pickup" ? 0 : Number(delivery_fee || 0);
+    const totalValue = Number(total);
+    const expectedTotal = Number((subtotalValue + deliveryFeeValue).toFixed(2));
+
+    if (!Number.isFinite(subtotalValue) || !Number.isFinite(totalValue) || !Number.isFinite(cartSubtotal) || totalValue <= 0) {
+        return "Total inválido";
+    }
+
+    if (Number(subtotalValue.toFixed(2)) !== cartSubtotal) {
+        return "El subtotal no coincide con los productos del carrito";
+    }
+
+    if (Number(totalValue.toFixed(2)) !== expectedTotal) {
+        return "El total no coincide con el subtotal y delivery";
+    }
+
+    if (delivery_type === "delivery" && !sector) {
+        return "Debes seleccionar un sector";
+    }
+
+    if (delivery_type === "pickup" && !pickup_branch) {
+        return "Debes seleccionar un punto de recogida";
+    }
+
+    return null;
+}
+
+function getValidHttpUrl(value) {
+    const candidate = String(value || "").trim();
+
+    if (!candidate || candidate.toLowerCase() === "value") {
+        return null;
+    }
+
+    try {
+        const url = new URL(candidate);
+        return ["http:", "https:"].includes(url.protocol) ? candidate : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+app.post("/api/payphone/manual-payment", verificarToken, async (req, res) => {
     try {
         const {
             cart,
@@ -925,249 +1033,252 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             delivery_fee,
             total,
             delivery_type,
+            delivery_address,
             sector,
-            pickup_branch
+            pickup_branch,
+            latitude,
+            longitude,
+            customer_name,
+            customer_email
         } = req.body;
 
-        if (!cart || cart.length === 0) {
-            return res.status(400).json({ message: "El carrito está vacío" });
+        if (!customer_name || !customer_email) {
+            return res.status(400).json({
+                message: "Faltan datos del cliente"
+            });
         }
 
-        if (!["delivery", "pickup"].includes(delivery_type)) {
-            return res.status(400).json({ message: "Tipo de entrega inválido" });
-        }
-
-        const subtotalValue = Number(subtotal);
-        const cartSubtotal = Number(cart.reduce((sum, item) => {
-            const quantity = Number(item.quantity);
-            const price = Number(item.price);
-
-            if (!Number.isFinite(quantity) || !Number.isFinite(price) || quantity <= 0 || price < 0) {
-                return Number.NaN;
-            }
-
-            return sum + (price * quantity);
-        }, 0).toFixed(2));
-        const deliveryFeeValue = delivery_type === "pickup" ? 0 : Number(delivery_fee || 0);
-        const totalValue = Number(total);
-        const expectedTotal = Number((subtotalValue + deliveryFeeValue).toFixed(2));
-
-        if (!Number.isFinite(subtotalValue) || !Number.isFinite(totalValue) || !Number.isFinite(cartSubtotal) || totalValue <= 0) {
-            return res.status(400).json({ message: "Total inválido" });
-        }
-
-        if (Number(subtotalValue.toFixed(2)) !== cartSubtotal) {
-            return res.status(400).json({ message: "El subtotal no coincide con los productos del carrito" });
-        }
-
-        if (Number(totalValue.toFixed(2)) !== expectedTotal) {
-            return res.status(400).json({ message: "El total no coincide con el subtotal y delivery" });
-        }
-
-        if (delivery_type === "delivery" && !sector) {
-            return res.status(400).json({ message: "Debes seleccionar un sector" });
-        }
-
-        if (delivery_type === "pickup" && !pickup_branch) {
-            return res.status(400).json({ message: "Debes seleccionar un punto de recogida" });
-        }
-
-        const amountInCents = Math.round(totalValue * 100);
-        const clientTransactionId = `DR${Date.now().toString(36)}`.slice(0, 15);
-        const productSummary = cart
-            .map((item) => `${item.name} x${item.quantity}`)
-            .join(", ")
-            .slice(0, 180);
-
-        manualFallback = {
-            mode: "manual",
-            message: "Pago automático próximamente disponible.",
-            amount: amountInCents,
-            summary: {
-                subtotal: subtotalValue,
-                deliveryFee: deliveryFeeValue,
-                total: totalValue,
-                deliveryType: delivery_type,
-                sector: delivery_type === "delivery" ? sector : null,
-                pickupBranch: delivery_type === "pickup" ? pickup_branch : null,
-                products: productSummary,
-                paymentMethods: [
-                    "Transferencia bancaria",
-                    "Confirmación por WhatsApp"
-                ]
-            }
-        };
-
-        const hasPayphoneToken = Boolean(process.env.PAYPHONE_TOKEN);
-        const payphoneTokenLength = process.env.PAYPHONE_TOKEN?.length || 0;
-        const hasPayphoneStoreId = Boolean(process.env.PAYPHONE_STORE_ID);
-        const payphoneStoreIdLength = process.env.PAYPHONE_STORE_ID?.length || 0;
-        const storeIdOmitted = process.env.PAYPHONE_OMIT_STORE_ID === "true";
-
-        console.info("PayPhone diagnostics:", {
-            hasPayphoneToken,
-            payphoneTokenLength,
-            hasPayphoneStoreId,
-            payphoneStoreIdLength,
-            storeIdOmitted
+        const validationError = validateManualPayphoneOrder({
+            cart,
+            subtotal,
+            delivery_fee,
+            total,
+            delivery_type,
+            sector,
+            pickup_branch
         });
 
-        if (!process.env.PAYPHONE_TOKEN) {
-            console.info("PAYPHONE_TOKEN no configurado");
-            return res.json(manualFallback);
+        if (validationError) {
+            return res.status(400).json({ message: validationError });
         }
 
-        if (!process.env.PAYPHONE_STORE_ID) {
-            console.info("PAYPHONE_STORE_ID no configurado");
-            return res.json(manualFallback);
+        const productSummary = cart
+            .map((item) => `${item.name} x${item.quantity}`)
+            .join(", ");
+        const totalQuantity = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
+        const deliveryFeeValue = delivery_type === "pickup" ? 0 : Number(delivery_fee || 0);
+
+        const result = await pool.query(
+            `
+            INSERT INTO orders (
+                customer_name,
+                customer_email,
+                product_name,
+                quantity,
+                subtotal,
+                delivery_fee,
+                total,
+                delivery_address,
+                sector,
+                latitude,
+                longitude,
+                payment_method,
+                payment_url,
+                delivery_type,
+                pickup_branch,
+                status
+            )
+            VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7,
+                $8, $9,
+                $10, $11,
+                $12, $13, $14, $15, $16
+            )
+            RETURNING id
+            `,
+            [
+                customer_name,
+                customer_email,
+                productSummary,
+                totalQuantity,
+                Number(subtotal),
+                deliveryFeeValue,
+                Number(total),
+                delivery_type === "delivery" ? delivery_address : "",
+                delivery_type === "delivery" ? sector : "",
+                latitude || null,
+                longitude || null,
+                "payphone_manual",
+                null,
+                delivery_type,
+                delivery_type === "pickup" ? pickup_branch : null,
+                "awaiting_payment_confirmation"
+            ]
+        );
+
+        res.json({
+            message: "Pedido registrado. Pago pendiente de confirmación manual.",
+            orderId: result.rows[0].id,
+            status: "awaiting_payment_confirmation",
+            paymentMethod: "payphone_manual",
+            expectedTotal: Number(total)
+        });
+    } catch (error) {
+        console.error("Error registrando pago manual PayPhone:", error.message);
+        res.status(500).json({ message: "Error registrando pedido PayPhone" });
+    }
+});
+
+app.post("/api/payphone/link", verificarToken, async (req, res) => {
+    const { orderId } = req.body;
+
+    if (!orderId) {
+        return res.status(400).json({ message: "orderId requerido" });
+    }
+
+    try {
+        const orderResult = await pool.query(
+            `
+            SELECT *
+            FROM orders
+            WHERE id = $1
+              AND (customer_email = $2 OR $3 = 'admin')
+            `,
+            [orderId, req.user.email, req.user.role]
+        );
+
+        if (orderResult.rows.length === 0) {
+            return res.status(404).json({ message: "Pedido no encontrado" });
+        }
+
+        const order = orderResult.rows[0];
+        const manualPaymentUrl = getValidHttpUrl(process.env.PAYPHONE_PAYMENT_URL);
+        const totalInCents = Math.round(Number(order.total) * 100);
+
+        if (!Number.isFinite(totalInCents) || totalInCents <= 0) {
+            return res.status(400).json({ message: "Total del pedido inválido" });
         }
 
         const payload = {
-            amount: amountInCents,
-            amountWithoutTax: amountInCents,
+            amount: totalInCents,
+            amountWithoutTax: totalInCents,
             currency: "USD",
-            reference: `Dulce Rocio ${clientTransactionId}`,
-            clientTransactionId,
-            isAmountEditable: false
+            reference: `Dulce Rocio ${order.id}`,
+            clientTransactionId: String(order.id),
+            isAmountEditable: true
         };
 
-        if (!storeIdOmitted) {
+        const payphoneOmitStoreIdValue = process.env.PAYPHONE_OMIT_STORE_ID || "";
+        const shouldOmitStoreId = payphoneOmitStoreIdValue === "true";
+        const sentStoreId = Boolean(process.env.PAYPHONE_STORE_ID && !shouldOmitStoreId);
+
+        if (sentStoreId) {
             payload.storeId = process.env.PAYPHONE_STORE_ID;
         }
 
-        console.info("PayPhone payload sanitizado:", {
-            ...payload,
-            payloadVariant: "official-minimal-without-tax",
-            storeId: storeIdOmitted ? "[omitted]" : "[configured]",
-            storeIdLength: payphoneStoreIdLength,
-            storeIdOmitted
+        console.info("PayPhone manual link request:", {
+            endpoint: "https://pay.payphonetodoesposible.com/api/Links",
+            hasToken: Boolean(process.env.PAYPHONE_TOKEN),
+            hasStoreId: Boolean(process.env.PAYPHONE_STORE_ID),
+            sentStoreId,
+            payphoneOmitStoreIdValue,
+            interpretedOmitStoreId: shouldOmitStoreId,
+            payload
         });
 
-        const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
-                "Content-Type": "application/json",
-                Accept: "application/json"
-            },
-            body: JSON.stringify(payload)
-        });
+        let paymentUrl = null;
+        let mode = "manual";
 
-        const contentType = response.headers.get("content-type") || "";
-        console.info("PayPhone response metadata:", {
-            status: response.status,
-            contentType
-        });
+        if (process.env.PAYPHONE_TOKEN) {
+            try {
+                const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
+                        "Content-Type": "application/json",
+                        Accept: "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
 
-        const data = contentType.includes("application/json")
-            ? await response.json()
-            : await response.text();
+                const contentType = response.headers.get("content-type") || "";
+                const data = contentType.includes("application/json")
+                    ? await response.json()
+                    : await response.text();
 
-        if (!response.ok) {
-            console.error("PayPhone respondió error:", {
-                status: response.status,
-                contentType,
-                responsePreview: typeof data === "string"
-                    ? data.slice(0, 300)
-                    : JSON.stringify(data).slice(0, 300)
-            });
-            return res.json(manualFallback);
+                console.info("PayPhone manual link response:", {
+                    status: response.status,
+                    contentType,
+                    responseKind: contentType.includes("application/json") ? "json" : "text"
+                });
+
+                if (response.ok) {
+                    const candidateUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
+                    paymentUrl = getValidHttpUrl(candidateUrl);
+                    mode = "api_editable";
+
+                    if (!paymentUrl) {
+                        console.error("PayPhone no devolvió un link HTTP válido:", {
+                            status: response.status,
+                            contentType,
+                            sentStoreId,
+                            payphoneOmitStoreIdValue,
+                            interpretedOmitStoreId: shouldOmitStoreId,
+                            payload,
+                            responsePreview: typeof data === "string"
+                                ? data.slice(0, 300)
+                                : JSON.stringify(data).slice(0, 300)
+                        });
+                    }
+                } else {
+                    console.error("PayPhone manual link fallback:", {
+                        status: response.status,
+                        contentType,
+                        sentStoreId,
+                        payphoneOmitStoreIdValue,
+                        interpretedOmitStoreId: shouldOmitStoreId,
+                        payload,
+                        responsePreview: typeof data === "string"
+                            ? data.slice(0, 300)
+                            : JSON.stringify(data).slice(0, 300)
+                    });
+                }
+            } catch (error) {
+                console.error("PayPhone manual link request failed:", {
+                    message: error.message
+                });
+            }
         }
-
-        const paymentUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
 
         if (!paymentUrl) {
-            console.error("PayPhone no devolvió un link válido:", {
-                contentType,
-                responsePreview: typeof data === "string"
-                    ? data.slice(0, 300)
-                    : JSON.stringify(data).slice(0, 300)
+            paymentUrl = manualPaymentUrl;
+            mode = "manual";
+        }
+
+        if (!paymentUrl) {
+            return res.status(500).json({
+                message: "No pudimos generar el link de PayPhone. Intenta nuevamente o comunícate con nosotros."
             });
-            return res.json(manualFallback);
         }
+
+        await pool.query(
+            "UPDATE orders SET payment_url = $1 WHERE id = $2",
+            [paymentUrl, order.id]
+        );
 
         res.json({
-            paymentUrl,
-            amount: amountInCents,
-            clientTransactionId
+            mode,
+            orderId: order.id,
+            expectedTotal: Number(order.total),
+            paymentUrl
         });
     } catch (error) {
-        console.error("Error generando link PayPhone:", error.message);
-        if (manualFallback) {
-            return res.json(manualFallback);
-        }
-
-        res.status(500).json({ message: "Error generando link PayPhone" });
+        console.error("Error preparando link PayPhone manual:", error.message);
+        res.status(500).json({ message: "Error preparando link PayPhone" });
     }
 });
 
-app.get("/api/payphone/health", async (req, res) => {
-    const hasToken = Boolean(process.env.PAYPHONE_TOKEN);
-    const tokenLength = process.env.PAYPHONE_TOKEN?.length || 0;
-    const hasStoreId = Boolean(process.env.PAYPHONE_STORE_ID);
-    const storeIdLength = process.env.PAYPHONE_STORE_ID?.length || 0;
-
-    try {
-        const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
-            method: "GET",
-            headers: hasToken
-                ? { Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}` }
-                : {}
-        });
-
-        const contentType = response.headers.get("content-type") || "";
-        const rawBody = await response.text();
-        const responseKind = contentType.includes("application/json")
-            ? "json"
-            : rawBody.trim().startsWith("<")
-                ? "html"
-                : "text";
-        const summary = rawBody.replace(/\s+/g, " ").trim().slice(0, 300);
-
-        console.info("PayPhone health diagnostics:", {
-            hasToken,
-            tokenLength,
-            hasStoreId,
-            storeIdLength,
-            status: response.status,
-            contentType,
-            responseKind,
-            summary
-        });
-
-        res.json({
-            hasToken,
-            tokenLength,
-            hasStoreId,
-            storeIdLength,
-            status: response.status,
-            contentType,
-            responseKind,
-            summary
-        });
-    } catch (error) {
-        const summary = error.message.slice(0, 300);
-
-        console.error("PayPhone health diagnostic error:", {
-            hasToken,
-            tokenLength,
-            hasStoreId,
-            storeIdLength,
-            summary
-        });
-
-        res.json({
-            hasToken,
-            tokenLength,
-            hasStoreId,
-            storeIdLength,
-            status: null,
-            contentType: null,
-            responseKind: "error",
-            summary
-        });
-    }
-});
 // =========================
 // STOCK DE PRODUCTOS
 // =========================

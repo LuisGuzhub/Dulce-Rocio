@@ -98,7 +98,8 @@ function OrderPage() {
     const [selectedPickupBranch, setSelectedPickupBranch] = useState('');
     const [stock, setStock] = useState([]);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
-    const [isCreatingPayphoneLink, setIsCreatingPayphoneLink] = useState(false);
+    const [isStartingPayphonePayment, setIsStartingPayphonePayment] = useState(false);
+    const [payphoneManualOrder, setPayphoneManualOrder] = useState(null);
     const [savedCarts, setSavedCarts] = useState([]);
     const [showSavedCartPanel, setShowSavedCartPanel] = useState(false);
     const autoRestoredCart = useRef(false);
@@ -514,14 +515,14 @@ function OrderPage() {
         const token = localStorage.getItem("token");
 
         if (!token) {
-            alert("Inicia sesion para generar el link de pago seguro.");
+            alert("Inicia sesion para registrar tu pedido antes de pagar.");
             return;
         }
 
-        setIsCreatingPayphoneLink(true);
+        setIsStartingPayphonePayment(true);
 
         try {
-            const response = await fetch(`${apiBaseUrl}/api/payphone/link`, {
+            const response = await fetch(`${apiBaseUrl}/api/payphone/manual-payment`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -534,32 +535,56 @@ function OrderPage() {
                         price: item.price,
                         quantity: item.quantity
                     })),
+                    customer_name: customerName,
+                    customer_email: customerEmail,
                     subtotal: totalPrice,
                     delivery_fee: deliveryType === "pickup" ? 0 : Number(deliveryFee || 0),
                     total: finalTotal,
                     delivery_type: deliveryType,
+                    delivery_address: deliveryType === "delivery" ? deliveryAddress : "",
                     sector: selectedSector,
-                    pickup_branch: selectedPickupBranch
+                    pickup_branch: selectedPickupBranch,
+                    latitude: selectedPosition?.[0] || null,
+                    longitude: selectedPosition?.[1] || null
                 })
             });
 
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.message || "No se pudo generar el link de PayPhone.");
+                throw new Error(data.message || "No se pudo registrar el pedido PayPhone.");
             }
 
-            if (data.mode === "manual") {
-                alert("No pudimos generar el link de PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
+            const linkResponse = await fetch(`${apiBaseUrl}/api/payphone/link`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ orderId: data.orderId })
+            });
+            const linkData = await linkResponse.json();
+
+            if (!linkResponse.ok) {
+                throw new Error(linkData.message || "No se pudo preparar el link de PayPhone.");
+            }
+
+            if (!linkData.paymentUrl) {
+                alert("No pudimos generar el link de PayPhone. Intenta nuevamente o comunícate con nosotros.");
                 return;
             }
 
-            window.open(data.paymentUrl, "_blank", "noopener,noreferrer");
+            setShowPaymentModal(false);
+            setPayphoneManualOrder({
+                orderId: data.orderId,
+                expectedTotal: Number(linkData.expectedTotal || data.expectedTotal || finalTotal),
+                paymentUrl: linkData.paymentUrl
+            });
         } catch (error) {
             console.error("Error generando pago PayPhone:", error);
-            alert("No pudimos generar el link de PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
+            alert(error.message || "No pudimos registrar tu pedido PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
         } finally {
-            setIsCreatingPayphoneLink(false);
+            setIsStartingPayphonePayment(false);
         }
     };
 
@@ -1542,20 +1567,85 @@ function OrderPage() {
                                 </div>
 
                                 <p className="text-[#4a352d] leading-7 mb-5">
-                                    Paga con tarjeta mediante PayPhone. Generaremos un link seguro por
-                                    <strong> ${formatPrice(finalTotal)}</strong> y el monto no podra editarse.
+                                    Paga con PayPhone usando el link de Dulce Rocío. Ingresa manualmente el valor de referencia:
+                                    <strong> ${formatPrice(finalTotal)}</strong>.
                                 </p>
 
                                 <button
                                     type="button"
                                     onClick={openPayphonePayment}
-                                    disabled={isCreatingPayphoneLink}
+                                    disabled={isStartingPayphonePayment}
                                     className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
                                 >
                                     <ExternalLink size={20} />
-                                    {isCreatingPayphoneLink ? "Generando link..." : "Pagar monto exacto"}
+                                    {isStartingPayphonePayment ? "Registrando pedido..." : "Pagar con PayPhone"}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {payphoneManualOrder && (
+                <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center px-4">
+                    <div className="relative bg-[#fffaf7] w-full max-w-xl rounded-[28px] shadow-2xl border border-[#eadfd7] p-6 md:p-8">
+                        <button
+                            type="button"
+                            onClick={() => setPayphoneManualOrder(null)}
+                            className="absolute top-5 right-5 text-[#6F4E47] hover:text-[#2d1d17]"
+                        >
+                            <X size={26} />
+                        </button>
+
+                        <div className="flex items-center gap-3 mb-5">
+                            <div className="w-12 h-12 rounded-2xl bg-[#f7efe9] flex items-center justify-center text-[#6F4E47]">
+                                <CreditCard size={26} />
+                            </div>
+                            <div>
+                                <p className="text-sm uppercase tracking-[0.16em] text-[#d78963] font-semibold">
+                                    Pedido registrado
+                                </p>
+                                <h2
+                                    className="text-3xl font-bold text-[#2d1d17]"
+                                    style={{ fontFamily: 'Playfair Display, serif' }}
+                                >
+                                    Pedido #{payphoneManualOrder.orderId}
+                                </h2>
+                            </div>
+                        </div>
+
+                        <div className="bg-white border border-[#eadfd7] rounded-3xl p-5 mb-5">
+                            <p className="text-[#6F4E47] mb-2">
+                                Total a pagar en PayPhone
+                            </p>
+                            <p className="text-4xl font-bold text-[#2d1d17]">
+                                ${formatPrice(payphoneManualOrder.expectedTotal)}
+                            </p>
+                        </div>
+
+                        <p className="text-[#4a352d] leading-7 mb-6">
+                            Tu pedido fue registrado. Abre PayPhone y escribe exactamente este valor.
+                            Validaremos tu pago manualmente antes de preparar el pedido.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <a
+                                href={payphoneManualOrder.paymentUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex flex-1 items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                            >
+                                <ExternalLink size={20} />
+                                Abrir PayPhone para pagar
+                            </a>
+
+                            <button
+                                type="button"
+                                onClick={() => setPayphoneManualOrder(null)}
+                                className="inline-flex items-center justify-center border border-[#eadfd7] text-[#6F4E47] font-semibold px-6 py-4 rounded-2xl hover:bg-[#f7efe9] transition-all duration-300"
+                            >
+                                Cerrar
+                            </button>
                         </div>
                     </div>
                 </div>
