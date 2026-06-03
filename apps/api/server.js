@@ -1062,6 +1062,21 @@ function extractPaymentUrl(data) {
     return null;
 }
 
+function getPayphoneStoreIdConfig() {
+    const configuredStoreId = String(process.env.PAYPHONE_STORE_ID || "").trim();
+    const omitValue = process.env.PAYPHONE_OMIT_STORE_ID || "";
+    const shouldOmit = omitValue === "true";
+    const looksLikeRuc = /^\d{13}$/.test(configuredStoreId);
+
+    return {
+        configuredStoreId,
+        omitValue,
+        shouldOmit,
+        looksLikeRuc,
+        usableStoreId: configuredStoreId && !shouldOmit && !looksLikeRuc ? configuredStoreId : null
+    };
+}
+
 app.post("/api/payphone/manual-payment", verificarToken, async (req, res) => {
     try {
         const {
@@ -1198,8 +1213,10 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         }
 
         const payphoneEndpoint = "https://pay.payphonetodoesposible.com/api/button/Prepare";
-        const responseUrl = getValidHttpUrl(process.env.PAYPHONE_RESPONSE_URL) || "https://dulcerocio.com/order";
-        const payload = {
+        const frontendUrl = getValidHttpUrl(process.env.FRONTEND_URL) || "https://dulcerocio.com";
+        const responseUrl = getValidHttpUrl(process.env.PAYPHONE_RESPONSE_URL) || `${frontendUrl}/order`;
+        const cancellationUrl = getValidHttpUrl(process.env.PAYPHONE_CANCELLATION_URL) || `${frontendUrl}/order`;
+        const basePayload = {
             amount: totalInCents,
             amountWithoutTax: totalInCents,
             amountWithTax: 0,
@@ -1209,87 +1226,111 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             currency: "USD",
             reference: `Dulce Rocio ${order.id}`,
             clientTransactionId: String(order.id),
-            responseUrl
+            responseUrl,
+            cancellationUrl,
+            timeZone: -5
         };
 
-        const payphoneOmitStoreIdValue = process.env.PAYPHONE_OMIT_STORE_ID || "";
-        const shouldOmitStoreId = payphoneOmitStoreIdValue === "true";
-        const sentStoreId = Boolean(process.env.PAYPHONE_STORE_ID && !shouldOmitStoreId);
+        const storeConfig = getPayphoneStoreIdConfig();
+        const payload = { ...basePayload };
+        const sentStoreId = Boolean(storeConfig.usableStoreId);
 
-        if (sentStoreId) {
-            payload.storeId = process.env.PAYPHONE_STORE_ID;
+        if (storeConfig.usableStoreId) {
+            payload.storeId = storeConfig.usableStoreId;
         }
-
-        console.info("PayPhone manual link request:", {
-            endpoint: payphoneEndpoint,
-            hasToken: Boolean(process.env.PAYPHONE_TOKEN),
-            hasStoreId: Boolean(process.env.PAYPHONE_STORE_ID),
-            sentStoreId,
-            payphoneOmitStoreIdValue,
-            interpretedOmitStoreId: shouldOmitStoreId,
-            payload
-        });
 
         let paymentUrl = null;
         let mode = "manual";
+        let lastPayphoneError = null;
+
+        const preparePayphoneButton = async (payloadToSend, attempt) => {
+            console.info("PayPhone button prepare request:", {
+                attempt,
+                endpoint: payphoneEndpoint,
+                hasToken: Boolean(process.env.PAYPHONE_TOKEN),
+                hasStoreId: Boolean(storeConfig.configuredStoreId),
+                sentStoreId: Boolean(payloadToSend.storeId),
+                payphoneOmitStoreIdValue: storeConfig.omitValue,
+                interpretedOmitStoreId: storeConfig.shouldOmit,
+                configuredStoreIdLooksLikeRuc: storeConfig.looksLikeRuc,
+                payload: payloadToSend
+            });
+
+            const response = await fetch(payphoneEndpoint, {
+                method: "POST",
+                headers: {
+                    Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
+                    "Content-Type": "application/json",
+                    Accept: "application/json"
+                },
+                body: JSON.stringify(payloadToSend)
+            });
+
+            const contentType = response.headers.get("content-type") || "";
+            const data = contentType.includes("application/json")
+                ? await response.json()
+                : await response.text();
+
+            console.info("PayPhone button prepare response:", {
+                attempt,
+                status: response.status,
+                contentType,
+                responseKind: contentType.includes("application/json") ? "json" : "text"
+            });
+
+            if (!response.ok) {
+                lastPayphoneError = {
+                    attempt,
+                    status: response.status,
+                    contentType,
+                    sentStoreId: Boolean(payloadToSend.storeId),
+                    payphoneOmitStoreIdValue: storeConfig.omitValue,
+                    interpretedOmitStoreId: storeConfig.shouldOmit,
+                    configuredStoreIdLooksLikeRuc: storeConfig.looksLikeRuc,
+                    payload: payloadToSend,
+                    responsePreview: typeof data === "string"
+                        ? data.slice(0, 300)
+                        : JSON.stringify(data).slice(0, 300)
+                };
+                console.error("PayPhone button prepare fallback:", lastPayphoneError);
+                return null;
+            }
+
+            const preparedUrl = extractPaymentUrl(data);
+
+            if (!preparedUrl) {
+                lastPayphoneError = {
+                    attempt,
+                    status: response.status,
+                    contentType,
+                    sentStoreId: Boolean(payloadToSend.storeId),
+                    payphoneOmitStoreIdValue: storeConfig.omitValue,
+                    interpretedOmitStoreId: storeConfig.shouldOmit,
+                    configuredStoreIdLooksLikeRuc: storeConfig.looksLikeRuc,
+                    payload: payloadToSend,
+                    responsePreview: typeof data === "string"
+                        ? data.slice(0, 300)
+                        : JSON.stringify(data).slice(0, 300)
+                };
+                console.error("PayPhone no devolvió un link HTTP válido:", lastPayphoneError);
+            }
+
+            return preparedUrl;
+        };
 
         if (process.env.PAYPHONE_TOKEN) {
             try {
-                const response = await fetch(payphoneEndpoint, {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
-                        "Content-Type": "application/json",
-                        Accept: "application/json"
-                    },
-                    body: JSON.stringify(payload)
-                });
+                paymentUrl = await preparePayphoneButton(payload, "with-configured-store");
 
-                const contentType = response.headers.get("content-type") || "";
-                const data = contentType.includes("application/json")
-                    ? await response.json()
-                    : await response.text();
-
-                console.info("PayPhone manual link response:", {
-                    status: response.status,
-                    contentType,
-                    responseKind: contentType.includes("application/json") ? "json" : "text"
-                });
-
-                if (response.ok) {
-                    paymentUrl = extractPaymentUrl(data);
-                    mode = "button_checkout";
-
-                    if (!paymentUrl) {
-                        console.error("PayPhone no devolvió un link HTTP válido:", {
-                            status: response.status,
-                            contentType,
-                            sentStoreId,
-                            payphoneOmitStoreIdValue,
-                            interpretedOmitStoreId: shouldOmitStoreId,
-                            payload,
-                            responsePreview: typeof data === "string"
-                                ? data.slice(0, 300)
-                                : JSON.stringify(data).slice(0, 300)
-                        });
-                    }
-                } else {
-                    console.error("PayPhone manual link fallback:", {
-                        status: response.status,
-                        contentType,
-                        sentStoreId,
-                        payphoneOmitStoreIdValue,
-                        interpretedOmitStoreId: shouldOmitStoreId,
-                        payload,
-                        responsePreview: typeof data === "string"
-                            ? data.slice(0, 300)
-                            : JSON.stringify(data).slice(0, 300)
-                    });
+                if (!paymentUrl && sentStoreId) {
+                    const payloadWithoutStoreId = { ...basePayload };
+                    paymentUrl = await preparePayphoneButton(payloadWithoutStoreId, "without-store");
                 }
+
+                mode = paymentUrl ? "button_checkout" : mode;
             } catch (error) {
-                console.error("PayPhone manual link request failed:", {
-                    message: error.message
-                });
+                lastPayphoneError = { message: error.message };
+                console.error("PayPhone button prepare request failed:", lastPayphoneError);
             }
         }
 
