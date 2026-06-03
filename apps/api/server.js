@@ -1025,6 +1025,41 @@ function getValidHttpUrl(value) {
     }
 }
 
+function extractPaymentUrl(data) {
+    if (typeof data === "string") {
+        return getValidHttpUrl(data);
+    }
+
+    if (!data || typeof data !== "object") {
+        return null;
+    }
+
+    const directCandidate = data.url
+        || data.link
+        || data.paymentUrl
+        || data.paymentURL
+        || data.paymentLink
+        || data.linkUrl;
+
+    const directUrl = getValidHttpUrl(directCandidate);
+
+    if (directUrl) {
+        return directUrl;
+    }
+
+    const values = Array.isArray(data) ? data : Object.values(data);
+
+    for (const value of values) {
+        const nestedUrl = extractPaymentUrl(value);
+
+        if (nestedUrl) {
+            return nestedUrl;
+        }
+    }
+
+    return null;
+}
+
 app.post("/api/payphone/manual-payment", verificarToken, async (req, res) => {
     try {
         const {
@@ -1214,8 +1249,7 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
                 });
 
                 if (response.ok) {
-                    const candidateUrl = typeof data === "string" ? data : data.url || data.link || data.paymentUrl;
-                    paymentUrl = getValidHttpUrl(candidateUrl);
+                    paymentUrl = extractPaymentUrl(data);
                     mode = "api_editable";
 
                     if (!paymentUrl) {

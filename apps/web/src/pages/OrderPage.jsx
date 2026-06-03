@@ -520,6 +520,12 @@ function OrderPage() {
         }
 
         setIsStartingPayphonePayment(true);
+        const paymentWindow = window.open("", "_blank");
+
+        if (paymentWindow) {
+            paymentWindow.opener = null;
+            paymentWindow.document.write("<p>Preparando PayPhone...</p>");
+        }
 
         try {
             const response = await fetch(`${apiBaseUrl}/api/payphone/manual-payment`, {
@@ -571,6 +577,7 @@ function OrderPage() {
 
             if (!linkData.paymentUrl) {
                 alert("No pudimos generar el link de PayPhone. Intenta nuevamente o comunícate con nosotros.");
+                paymentWindow?.close();
                 return;
             }
 
@@ -580,8 +587,15 @@ function OrderPage() {
                 expectedTotal: Number(linkData.expectedTotal || data.expectedTotal || finalTotal),
                 paymentUrl: linkData.paymentUrl
             });
+
+            if (paymentWindow) {
+                paymentWindow.location.href = linkData.paymentUrl;
+            } else {
+                window.location.href = linkData.paymentUrl;
+            }
         } catch (error) {
             console.error("Error generando pago PayPhone:", error);
+            paymentWindow?.close();
             alert(error.message || "No pudimos registrar tu pedido PayPhone. Intenta nuevamente o envía tu pedido por WhatsApp.");
         } finally {
             setIsStartingPayphonePayment(false);
