@@ -1212,6 +1212,26 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             return res.status(400).json({ message: "Total del pedido inválido" });
         }
 
+        if (manualPaymentUrl) {
+            await pool.query(
+                "UPDATE orders SET payment_url = $1 WHERE id = $2",
+                [manualPaymentUrl, order.id]
+            );
+
+            console.info("PayPhone fixed payment link selected:", {
+                orderId: order.id,
+                expectedTotal: Number(order.total),
+                hasPaymentUrl: true
+            });
+
+            return res.json({
+                mode: "fixed_payment_link",
+                orderId: order.id,
+                expectedTotal: Number(order.total),
+                paymentUrl: manualPaymentUrl
+            });
+        }
+
         const payphoneEndpoint = "https://pay.payphonetodoesposible.com/api/button/Prepare";
         const frontendUrl = getValidHttpUrl(process.env.FRONTEND_URL) || "https://dulcerocio.com";
         const responseUrl = getValidHttpUrl(process.env.PAYPHONE_RESPONSE_URL) || `${frontendUrl}/order`;

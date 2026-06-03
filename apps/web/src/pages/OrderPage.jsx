@@ -1581,7 +1581,7 @@ function OrderPage() {
                                 </div>
 
                                 <p className="text-[#4a352d] leading-7 mb-5">
-                                    Se abrirá el checkout seguro de PayPhone por
+                                    Se abrirá PayPhone. Ingresa manualmente este valor:
                                     <strong> ${formatPrice(finalTotal)}</strong>.
                                 </p>
 
@@ -1638,8 +1638,8 @@ function OrderPage() {
                         </div>
 
                         <p className="text-[#4a352d] leading-7 mb-6">
-                            Tu pedido fue registrado. Si PayPhone no se abrió automáticamente,
-                            usa el botón de abajo para continuar con el pago.
+                            Tu pedido fue registrado. Abre PayPhone e ingresa exactamente este valor.
+                            Validaremos el pago manualmente antes de preparar tu pedido.
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-3">
