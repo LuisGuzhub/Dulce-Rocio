@@ -1581,7 +1581,7 @@ function OrderPage() {
                                 </div>
 
                                 <p className="text-[#4a352d] leading-7 mb-5">
-                                    Paga con PayPhone usando el link de Dulce Rocío. Ingresa manualmente el valor de referencia:
+                                    Se abrirá el checkout seguro de PayPhone por
                                     <strong> ${formatPrice(finalTotal)}</strong>.
                                 </p>
 
@@ -1592,7 +1592,7 @@ function OrderPage() {
                                     className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
                                 >
                                     <ExternalLink size={20} />
-                                    {isStartingPayphonePayment ? "Registrando pedido..." : "Pagar con PayPhone"}
+                                    {isStartingPayphonePayment ? "Abriendo PayPhone..." : "Pagar con PayPhone"}
                                 </button>
                             </div>
                         </div>
@@ -1638,8 +1638,8 @@ function OrderPage() {
                         </div>
 
                         <p className="text-[#4a352d] leading-7 mb-6">
-                            Tu pedido fue registrado. Abre PayPhone y escribe exactamente este valor.
-                            Validaremos tu pago manualmente antes de preparar el pedido.
+                            Tu pedido fue registrado. Si PayPhone no se abrió automáticamente,
+                            usa el botón de abajo para continuar con el pago.
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-3">

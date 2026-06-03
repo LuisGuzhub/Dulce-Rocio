@@ -1034,7 +1034,9 @@ function extractPaymentUrl(data) {
         return null;
     }
 
-    const directCandidate = data.url
+    const directCandidate = data.payWithCard
+        || data.payWithPayPhone
+        || data.url
         || data.link
         || data.paymentUrl
         || data.paymentURL
@@ -1195,13 +1197,19 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             return res.status(400).json({ message: "Total del pedido inválido" });
         }
 
+        const payphoneEndpoint = "https://pay.payphonetodoesposible.com/api/button/Prepare";
+        const responseUrl = getValidHttpUrl(process.env.PAYPHONE_RESPONSE_URL) || "https://dulcerocio.com/order";
         const payload = {
             amount: totalInCents,
             amountWithoutTax: totalInCents,
+            amountWithTax: 0,
+            tax: 0,
+            service: 0,
+            tip: 0,
             currency: "USD",
             reference: `Dulce Rocio ${order.id}`,
             clientTransactionId: String(order.id),
-            isAmountEditable: true
+            responseUrl
         };
 
         const payphoneOmitStoreIdValue = process.env.PAYPHONE_OMIT_STORE_ID || "";
@@ -1213,7 +1221,7 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         }
 
         console.info("PayPhone manual link request:", {
-            endpoint: "https://pay.payphonetodoesposible.com/api/Links",
+            endpoint: payphoneEndpoint,
             hasToken: Boolean(process.env.PAYPHONE_TOKEN),
             hasStoreId: Boolean(process.env.PAYPHONE_STORE_ID),
             sentStoreId,
@@ -1227,7 +1235,7 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
 
         if (process.env.PAYPHONE_TOKEN) {
             try {
-                const response = await fetch("https://pay.payphonetodoesposible.com/api/Links", {
+                const response = await fetch(payphoneEndpoint, {
                     method: "POST",
                     headers: {
                         Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
@@ -1250,7 +1258,7 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
 
                 if (response.ok) {
                     paymentUrl = extractPaymentUrl(data);
-                    mode = "api_editable";
+                    mode = "button_checkout";
 
                     if (!paymentUrl) {
                         console.error("PayPhone no devolvió un link HTTP válido:", {
