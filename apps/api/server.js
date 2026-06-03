@@ -3,6 +3,7 @@ const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const axios = require("axios");
 const nodemailer = require("nodemailer");
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
@@ -1212,7 +1213,9 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             return res.status(400).json({ message: "Total del pedido inválido" });
         }
 
-        if (manualPaymentUrl) {
+        const shouldTryPayphoneApi = process.env.PAYPHONE_USE_BUTTON_API === "true";
+
+        if (manualPaymentUrl && !shouldTryPayphoneApi) {
             await pool.query(
                 "UPDATE orders SET payment_url = $1 WHERE id = $2",
                 [manualPaymentUrl, order.id]
@@ -1260,6 +1263,7 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
             console.info("PayPhone button prepare request:", {
                 attempt,
                 endpoint: payphoneEndpoint,
+                client: "axios",
                 hasToken: Boolean(process.env.PAYPHONE_TOKEN),
                 hasStoreId: Boolean(storeConfig.configuredStoreId),
                 sentStoreId: Boolean(payloadToSend.storeId),
@@ -1269,21 +1273,19 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
                 payload: payloadToSend
             });
 
-            const response = await fetch(payphoneEndpoint, {
-                method: "POST",
+            const response = await axios.post(payphoneEndpoint, payloadToSend, {
                 headers: {
                     Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
                     "Content-Type": "application/json",
                     Accept: "application/json",
                     Referer: frontendUrl
                 },
-                body: JSON.stringify(payloadToSend)
+                timeout: 15000,
+                validateStatus: () => true
             });
 
-            const contentType = response.headers.get("content-type") || "";
-            const data = contentType.includes("application/json")
-                ? await response.json()
-                : await response.text();
+            const contentType = response.headers["content-type"] || "";
+            const data = response.data;
 
             console.info("PayPhone button prepare response:", {
                 attempt,
@@ -1351,6 +1353,15 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         if (!paymentUrl) {
             paymentUrl = manualPaymentUrl;
             mode = "manual";
+
+            if (paymentUrl) {
+                console.info("PayPhone API unavailable, fixed payment link fallback selected:", {
+                    orderId: order.id,
+                    expectedTotal: Number(order.total),
+                    apiEnabled: shouldTryPayphoneApi,
+                    hasLastPayphoneError: Boolean(lastPayphoneError)
+                });
+            }
         }
 
         if (!paymentUrl) {
