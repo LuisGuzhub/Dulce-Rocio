@@ -1589,7 +1589,7 @@ function OrderPage() {
                                     type="button"
                                     onClick={openPayphonePayment}
                                     disabled={isStartingPayphonePayment}
-                                    className="inline-flex w-full items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                                    className="inline-flex w-full items-center justify-center gap-3 bg-[#6F4E47] hover:bg-[#4F3124] disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
                                 >
                                     <ExternalLink size={20} />
                                     {isStartingPayphonePayment ? "Abriendo PayPhone..." : "Pagar con PayPhone"}
@@ -1616,14 +1616,14 @@ function OrderPage() {
                                 <CreditCard size={26} />
                             </div>
                             <div>
-                                <p className="text-sm uppercase tracking-[0.16em] text-[#d78963] font-semibold">
+                                <p className="text-sm uppercase tracking-[0.16em] text-[#6F4E47] font-semibold">
                                     Pedido registrado
                                 </p>
                                 <h2
                                     className="text-3xl font-bold text-[#2d1d17]"
                                     style={{ fontFamily: 'Playfair Display, serif' }}
                                 >
-                                    Pedido #{payphoneManualOrder.orderId}
+                                    Pago pendiente
                                 </h2>
                             </div>
                         </div>
@@ -1647,7 +1647,7 @@ function OrderPage() {
                                 href={payphoneManualOrder.paymentUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex flex-1 items-center justify-center gap-3 bg-[#d78963] hover:bg-[#c97752] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
+                                className="inline-flex flex-1 items-center justify-center gap-3 bg-[#6F4E47] hover:bg-[#4F3124] text-white font-semibold px-6 py-4 rounded-2xl transition-all duration-300"
                             >
                                 <ExternalLink size={20} />
                                 Abrir PayPhone para pagar

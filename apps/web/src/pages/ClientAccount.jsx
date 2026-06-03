@@ -98,9 +98,26 @@ export default function ClientAccount() {
         return <p className="p-10 text-center">Cargando cuenta...</p>;
     }
 
+    const loyaltyProgress = Math.min(Number(loyalty?.purchased_items || 0), 8);
+    const freeDesserts = Number(loyalty?.free_items_available || 0);
+    const hasReward = freeDesserts > 0;
+
     return (
         <>
             <Header />
+            <style>
+                {`
+                    @keyframes dulceRewardFloat {
+                        0%, 100% { transform: translateY(0) scale(1); opacity: 0.55; }
+                        50% { transform: translateY(-10px) scale(1.08); opacity: 1; }
+                    }
+
+                    @keyframes dulceRewardGlow {
+                        0%, 100% { box-shadow: 0 18px 45px rgba(111, 78, 71, 0.12); }
+                        50% { box-shadow: 0 22px 55px rgba(111, 78, 71, 0.28); }
+                    }
+                `}
+            </style>
 
             <main className="min-h-screen bg-[#f7efe9] px-4 py-16">
                 <section className="max-w-5xl mx-auto">
@@ -151,7 +168,26 @@ export default function ClientAccount() {
                             >
                                 Cerrar sesión
                             </button>
-                            <div className="mt-6 rounded-3xl bg-[#fff7f2] border border-[#ead8cc] p-5 text-left">
+                            <div
+                                className={`relative mt-6 rounded-3xl bg-[#fff7f2] border border-[#ead8cc] p-5 text-left overflow-hidden ${hasReward ? "ring-2 ring-[#6F4E47]/30" : ""}`}
+                                style={hasReward ? { animation: "dulceRewardGlow 2.4s ease-in-out infinite" } : undefined}
+                            >
+                                {hasReward && (
+                                    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                                        {[...Array(10)].map((_, index) => (
+                                            <span
+                                                key={index}
+                                                className="absolute h-2 w-2 rounded-full bg-[#6F4E47]/35"
+                                                style={{
+                                                    left: `${8 + ((index * 17) % 84)}%`,
+                                                    top: `${10 + ((index * 23) % 76)}%`,
+                                                    animation: `dulceRewardFloat ${1.8 + (index % 4) * 0.25}s ease-in-out infinite`,
+                                                    animationDelay: `${index * 0.12}s`,
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                                 <h3 className="text-lg font-bold text-[#3b241b] mb-2">
                                     Tarjeta de fidelidad
                                 </h3>
@@ -162,13 +198,13 @@ export default function ClientAccount() {
 
                                 <div className="grid grid-cols-4 gap-2 mb-4">
                                     {Array.from({ length: 8 }).map((_, index) => {
-                                        const completed = index < Number(loyalty?.purchased_items || 0);
+                                        const completed = index < loyaltyProgress;
 
                                         return (
                                             <div
                                                 key={index}
                                                 className={`h-10 rounded-xl flex items-center justify-center text-sm font-bold ${completed
-                                                        ? "bg-[#d78963] text-white"
+                                                        ? "bg-[#6F4E47] text-white"
                                                         : "bg-white border border-[#ead8cc] text-[#7a5a4c]"
                                                     }`}
                                             >
@@ -180,20 +216,30 @@ export default function ClientAccount() {
 
                                 {/* TODO backend: contar compras confirmadas, no cantidad de postres. */}
                                 <p className="text-sm text-[#3b241b] font-semibold">
-                                    Progreso: {Number(loyalty?.purchased_items || 0)} / 8 compras
+                                    Progreso: {loyaltyProgress} / 8 compras
                                 </p>
 
                                 <p className="text-sm text-[#7a5a4c] mt-1">
                                     Postres gratis disponibles:{" "}
-                                    <span className="font-bold text-[#d78963]">
-                                        {Number(loyalty?.free_items_available || 0)}
+                                    <span className="font-bold text-[#6F4E47]">
+                                        {freeDesserts}
                                     </span>
                                 </p>
 
-                                {Number(loyalty?.free_items_available || 0) > 0 && (
-                                    <p className="mt-3 text-sm bg-green-100 text-green-700 px-3 py-2 rounded-xl font-semibold">
-                                        Tienes un postre gratis disponible. Puedes reclamarlo en tu próximo pedido.
-                                    </p>
+                                {hasReward && (
+                                    <div className="relative mt-4 rounded-2xl bg-[#3b241b] text-white px-4 py-4 overflow-hidden">
+                                        <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#d8b7a3]/25" />
+                                        <div className="absolute -left-6 -bottom-8 h-20 w-20 rounded-full bg-white/10" />
+                                        <p className="relative text-xs uppercase tracking-[0.18em] text-[#ead8cc] font-bold">
+                                            Recompensa desbloqueada
+                                        </p>
+                                        <p className="relative mt-1 text-lg font-bold">
+                                            Felicidades, tienes un postre gratis.
+                                        </p>
+                                        <p className="relative mt-1 text-sm text-[#f7efe9]">
+                                            Completaste 8 compras y puedes reclamarlo en tu proximo pedido.
+                                        </p>
+                                    </div>
                                 )}
                             </div>
                         </div>
