@@ -1215,20 +1215,13 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
         const payphoneEndpoint = "https://pay.payphonetodoesposible.com/api/button/Prepare";
         const frontendUrl = getValidHttpUrl(process.env.FRONTEND_URL) || "https://dulcerocio.com";
         const responseUrl = getValidHttpUrl(process.env.PAYPHONE_RESPONSE_URL) || `${frontendUrl}/order`;
-        const cancellationUrl = getValidHttpUrl(process.env.PAYPHONE_CANCELLATION_URL) || `${frontendUrl}/order`;
         const basePayload = {
             amount: totalInCents,
             amountWithoutTax: totalInCents,
-            amountWithTax: 0,
-            tax: 0,
-            service: 0,
-            tip: 0,
             currency: "USD",
-            reference: `Dulce Rocio ${order.id}`,
             clientTransactionId: String(order.id),
-            responseUrl,
-            cancellationUrl,
-            timeZone: -5
+            reference: `Dulce Rocio ${order.id}`,
+            responseUrl
         };
 
         const storeConfig = getPayphoneStoreIdConfig();
@@ -1261,7 +1254,8 @@ app.post("/api/payphone/link", verificarToken, async (req, res) => {
                 headers: {
                     Authorization: `Bearer ${process.env.PAYPHONE_TOKEN}`,
                     "Content-Type": "application/json",
-                    Accept: "application/json"
+                    Accept: "application/json",
+                    Referer: frontendUrl
                 },
                 body: JSON.stringify(payloadToSend)
             });
