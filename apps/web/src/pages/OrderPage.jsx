@@ -254,7 +254,7 @@ function OrderPage() {
             id: 6,
             name: 'Pave de nutella',
             description: 'Cremoso, dulce y con ese toque de Nutella que conquista.',
-            price: 2.5,
+            price: 3.5,
             image: paveNutella
         }
     ];

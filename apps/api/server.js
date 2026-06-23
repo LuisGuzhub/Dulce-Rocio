@@ -68,6 +68,7 @@ async function crearTablas() {
                 payment_url TEXT,
 
                 status TEXT DEFAULT 'pendiente',
+                loyalty_counted BOOLEAN DEFAULT false,
 
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -132,7 +133,15 @@ async function crearTablas() {
     ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS delivery_type TEXT DEFAULT 'delivery',
     ADD COLUMN IF NOT EXISTS pickup_branch TEXT,
-    ADD COLUMN IF NOT EXISTS payment_url TEXT;
+    ADD COLUMN IF NOT EXISTS payment_url TEXT,
+    ADD COLUMN IF NOT EXISTS loyalty_counted BOOLEAN DEFAULT false;
+`);
+
+        await pool.query(`
+    UPDATE orders
+    SET loyalty_counted = true
+    WHERE loyalty_counted = false
+    AND payment_method IS DISTINCT FROM 'payphone_manual';
 `);
 
 
@@ -143,6 +152,73 @@ async function crearTablas() {
 }
 
 crearTablas();
+
+async function recordLoyaltyPurchase(userEmail, db = pool) {
+    const totalPurchased = 1;
+
+    const loyaltyResult = await db.query(
+        `
+        SELECT * FROM loyalty_points
+        WHERE user_email = $1
+        `,
+        [userEmail]
+    );
+
+    if (loyaltyResult.rows.length === 0) {
+        let freeItems = 0;
+        let purchasedItems = totalPurchased;
+
+        if (purchasedItems >= 8) {
+            freeItems = Math.floor(purchasedItems / 8);
+            purchasedItems = purchasedItems % 8;
+        }
+
+        await db.query(
+            `
+            INSERT INTO loyalty_points
+            (
+                user_email,
+                purchased_items,
+                free_items_available
+            )
+            VALUES ($1, $2, $3)
+            `,
+            [
+                userEmail,
+                purchasedItems,
+                freeItems
+            ]
+        );
+
+        return;
+    }
+
+    const loyalty = loyaltyResult.rows[0];
+    let purchasedItems = Number(loyalty.purchased_items) + totalPurchased;
+    let freeItems = Number(loyalty.free_items_available);
+
+    if (purchasedItems >= 8) {
+        const rewards = Math.floor(purchasedItems / 8);
+        freeItems += rewards;
+        purchasedItems = purchasedItems % 8;
+    }
+
+    await db.query(
+        `
+        UPDATE loyalty_points
+        SET
+            purchased_items = $1,
+            free_items_available = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_email = $3
+        `,
+        [
+            purchasedItems,
+            freeItems,
+            userEmail
+        ]
+    );
+}
 
 // =========================
 // CONFIGURACIÓN GOOGLE
@@ -618,18 +694,57 @@ app.patch("/api/admin/orders/:id/status", verificarToken, async (req, res) => {
             return res.status(400).json({ message: "Estado inválido" });
         }
 
-        const result = await pool.query(
-            "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
-            [status, req.params.id]
-        );
+        const client = await pool.connect();
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: "Pedido no encontrado" });
+        let updatedOrder;
+
+        try {
+            await client.query("BEGIN");
+
+            const existingResult = await client.query(
+                "SELECT id, customer_email, loyalty_counted FROM orders WHERE id = $1 FOR UPDATE",
+                [req.params.id]
+            );
+
+            if (existingResult.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(404).json({ message: "Pedido no encontrado" });
+            }
+
+            const existingOrder = existingResult.rows[0];
+            const shouldCountLoyalty =
+                ["paid", "confirmed"].includes(status) &&
+                !existingOrder.loyalty_counted;
+
+            if (shouldCountLoyalty) {
+                await recordLoyaltyPurchase(existingOrder.customer_email, client);
+            }
+
+            const result = await client.query(
+                `
+                UPDATE orders
+                SET
+                    status = $1,
+                    loyalty_counted = CASE WHEN $3 THEN true ELSE loyalty_counted END
+                WHERE id = $2
+                RETURNING *
+                `,
+                [status, req.params.id, shouldCountLoyalty]
+            );
+
+            updatedOrder = result.rows[0];
+
+            await client.query("COMMIT");
+        } catch (error) {
+            await client.query("ROLLBACK");
+            throw error;
+        } finally {
+            client.release();
         }
 
         res.json({
             message: "Estado actualizado",
-            order: result.rows[0]
+            order: updatedOrder
         });
     } catch (error) {
         console.error("Error actualizando estado del pedido:", error.message);
@@ -945,6 +1060,11 @@ app.post("/api/orders", async (req, res) => {
                 ]
             );
         }
+
+        await pool.query(
+            "UPDATE orders SET loyalty_counted = true WHERE id = $1",
+            [result.rows[0].id]
+        );
 
         res.json({
             message: "Pedido guardado correctamente",
