@@ -85,6 +85,7 @@ function MapUpdater({ selectedPosition }) {
 
 function OrderPage() {
     const scrollRef = useRef(null);
+    const FIXED_DELIVERY_FEE = 3;
 
     const [cart, setCart] = useState([]);
     const [customerName, setCustomerName] = useState('');
@@ -194,7 +195,10 @@ function OrderPage() {
             { name: "Isla Trinitaria", fee: 3.75 }
         ]
     };
-    const deliveryZones = deliveryZonesByBranch[selectedBranch] || [];
+    const deliveryZones = (deliveryZonesByBranch[selectedBranch] || []).map((zone) => ({
+        ...zone,
+        fee: FIXED_DELIVERY_FEE
+    }));
 
     const branches = [
         {
@@ -416,7 +420,7 @@ function OrderPage() {
         setDeliveryType(restoredCart.deliveryType);
         setSelectedBranch(restoredCart.branch || restoredCart.pickupBranch || selectedBranch);
         setSelectedSector(restoredCart.deliveryType === "delivery" ? restoredCart.sector : "");
-        setDeliveryFee(restoredCart.deliveryType === "delivery" ? restoredCart.deliveryFee : 0);
+        setDeliveryFee(restoredCart.deliveryType === "delivery" && restoredCart.sector ? FIXED_DELIVERY_FEE : 0);
         setDeliveryAddress(restoredCart.deliveryType === "delivery" ? restoredCart.deliveryAddress : "");
         setSelectedPickupBranch(restoredCart.deliveryType === "pickup" ? restoredCart.pickupBranch : "");
 
@@ -1256,6 +1260,7 @@ function OrderPage() {
                                         onClick={() => {
                                             setDeliveryType("delivery");
                                             setSelectedPickupBranch("");
+                                            setDeliveryFee(selectedSector ? FIXED_DELIVERY_FEE : "");
                                         }}
                                         className={`flex items-center justify-center gap-3 p-4 rounded-2xl border font-semibold transition ${deliveryType === "delivery"
                                             ? "bg-[#6F4E47] text-white border-[#6F4E47]"
@@ -1312,10 +1317,9 @@ function OrderPage() {
                                                     value={selectedSector}
                                                     onChange={(event) => {
                                                         const sectorName = event.target.value;
-                                                        const zone = deliveryZones.find((item) => item.name === sectorName);
 
                                                         setSelectedSector(sectorName);
-                                                        setDeliveryFee(zone ? zone.fee : '');
+                                                        setDeliveryFee(sectorName ? FIXED_DELIVERY_FEE : '');
                                                     }}
                                                     className="w-full p-3 pl-11 rounded-xl border border-[#eadfd7] outline-none focus:border-[#6F4E47] bg-white text-[#3d2a22]"
                                                 >
